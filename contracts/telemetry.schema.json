@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ProfSynapse/talk-to-my-plant/contracts/telemetry.schema.json",
+  "title": "Plant telemetry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "device_id",
+    "recorded_at",
+    "readings",
+    "conditions",
+    "source"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "device_id": { "type": "string", "minLength": 1 },
+    "recorded_at": { "type": "string", "format": "date-time" },
+    "source": { "enum": ["simulator", "hardware"] },
+    "conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "readings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "soil_moisture",
+        "temperature_f",
+        "humidity",
+        "pressure_hpa",
+        "battery_percent",
+        "battery_voltage"
+      ],
+      "properties": {
+        "soil_moisture": { "type": "number", "minimum": 0, "maximum": 100 },
+        "temperature_f": { "type": "number" },
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100 },
+        "pressure_hpa": { "type": "number", "minimum": 0 },
+        "battery_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "battery_voltage": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
