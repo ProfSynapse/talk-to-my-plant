@@ -1,0 +1,18 @@
+{
+  "display_information": {
+    "name": "Talk to My Plant",
+    "description": "Chat with your plant using sensor logs and conversation memory.",
+    "background_color": "#233827"
+  },
+  "features": {
+    "slash_commands": [{
+      "command": "/plant",
+      "url": "https://plant-api-production-68c9.up.railway.app/slack/commands",
+      "description": "Ask your plant a question or log watering",
+      "usage_hint": "[demo] how are you? | watered",
+      "should_escape": false
+    }]
+  },
+  "oauth_config": {"scopes": {"bot": ["commands", "incoming-webhook"]}},
+  "settings": {"org_deploy_enabled": false, "socket_mode_enabled": false, "token_rotation_enabled": false}
+}

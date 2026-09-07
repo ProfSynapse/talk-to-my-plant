@@ -9,19 +9,19 @@
     "device_id",
     "recorded_at",
     "readings",
-    "conditions",
     "source"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
-    "device_id": { "type": "string", "minLength": 1 },
+    "schema_version": { "enum": ["1.0", "1.1"] },
+    "report_kind": { "enum": ["event", "checkin"], "default": "event" },
+    "device_id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
     "recorded_at": { "type": "string", "format": "date-time" },
     "source": { "enum": ["simulator", "hardware"] },
     "conditions": {
       "type": "array",
       "items": { "type": "string" },
-      "minItems": 1,
-      "uniqueItems": true
+      "maxItems": 10,
+      "description": "Advisory only; server recomputes conditions from readings"
     },
     "readings": {
       "type": "object",
@@ -36,11 +36,11 @@
       ],
       "properties": {
         "soil_moisture": { "type": "number", "minimum": 0, "maximum": 100 },
-        "temperature_f": { "type": "number" },
+        "temperature_f": { "type": "number", "minimum": -40, "maximum": 185 },
         "humidity": { "type": "number", "minimum": 0, "maximum": 100 },
-        "pressure_hpa": { "type": "number", "minimum": 0 },
+        "pressure_hpa": { "type": "number", "minimum": 300, "maximum": 1100 },
         "battery_percent": { "type": "number", "minimum": 0, "maximum": 100 },
-        "battery_voltage": { "type": "number", "minimum": 0 }
+        "battery_voltage": { "type": "number", "minimum": 0, "maximum": 5 }
       }
     }
   }

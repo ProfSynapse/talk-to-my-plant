@@ -1,35 +1,75 @@
-# Initial architecture
+# Architecture
 
-## Principle
+One Python/FastAPI service on Railway and one Postgres database. The service
+receives telemetry, assembles conversation context, calls OpenRouter, and runs a
+small monitoring/delivery worker. No agent loop, MCP, Redis, or n8n is required.
 
-The backend consumes one versioned telemetry contract regardless of whether a
-reading came from the simulator or the physical Feather. Hardware access stays
-behind a device-side adapter.
+## Memory
 
-## Components
+Postgres stores readings, current device state, alert transitions and delivery
+attempts, care events, completed conversation turns, and queued Slack requests.
+Each model call receives the last `MEMORY_MESSAGES` messages (default 20), the
+current state with timestamps, up to 24 recent event readings, active alerts,
+and the last 10 care records. Old and simulated data are explicitly labeled.
+Memory is scoped to plant, source, and conversation ID. Slack slash-command
+memory is separated by workspace, channel, and user.
 
-1. The simulator or Feather sends an HTTPS telemetry payload.
-2. A Railway API authenticates the device, validates the payload, and stores it
-   in Postgres.
-3. Deterministic rules derive plant conditions from readings, trends, and recent
-   care events. Hysteresis and suppression prevent repeated noisy alerts.
-4. n8n delivers actionable events to Slack first; SMS and email can be added
-   without changing the device.
-5. A conversational service answers questions using stored readings and care
-   history. An LLM controls phrasing/personality, never the factual plant state.
+OpenRouter is called once per reply with assembled context. Set
+`OPENROUTER_MODEL` to a model ID; leave it blank to use the account default.
+Without a key, chat returns an explicitly labeled factual status response.
+There is no model call during telemetry ingestion or periodic monitoring.
 
-## Suggested first vertical slice
+## Event-driven reporting
 
-- `POST /api/telemetry`
-- One Postgres readings table
-- Soil-low and battery-low rules
-- One Slack notification destination
-- `GET /api/plants/plant-001/status`
-- A reply to “How are you?” grounded in the most recent reading
+Sample locally, then send an event when a condition changes or measurements
+differ meaningfully from the last transmission. Send a confirmation after 120
+seconds if a potential problem remains. The simulator's `--event-driven` flag
+implements this now; Feather firmware remains to be written and calibrated.
 
-## Open decisions
+Send an hourly silent check-in even if nothing changes. It includes current
+readings so questions can be answered from recent data, but does not append
+unchanged values to reading history. This makes loss of connectivity detectable.
+Historical event logs are irregularly sampled; they cannot support unbiased
+time averages without accounting for that sampling policy.
 
-- TypeScript versus Python for the Railway service
-- Slack app versus n8n Slack node for the first conversational interface
-- Plant species and calibrated wet/dry sensor values
-- USB-powered with battery backup versus battery-first operation
+The worker checks liveness every minute, creating one offline alert after three
+hours without a fresh report. Sensor alerts require two distinct observations
+spanning 120 seconds; repeatedly inspecting one old reading never confirms an
+alert. Recovery uses separate thresholds, resolves pending notifications, and
+sends no message. One notification is queued per sustained problem episode.
+Failed alerts retry with backoff up to ten attempts; Slack replies retry five
+times. Delivery is at-least-once: failure after Slack accepted a request can
+rarely duplicate a message. There are no reminders for unchanged problems.
+
+The demo is `demo-plant` / `simulator`; hardware is `plant-001` / `hardware`.
+Demo alerts are suppressed unless `SLACK_INCLUDE_SIMULATOR=true` is set.
+The hosted demo uses bounded synthetic values and no model calls. Monitoring
+starts only after a device first reports. No-data hardware is never called healthy.
+
+## Access and deployment
+
+Owner APIs use `PLANT_API_KEY`. Hardware credentials can ingest only the configured
+hardware ID; simulator credentials only ingest the demo. Neither device token
+can read history or memory. Slack requests require HMAC signature verification,
+a recent timestamp, a configured workspace, and an allowlisted user.
+
+Schema creation is idempotent under an advisory lock at startup. Database locks
+coordinate alert creation, chat turns, and durable jobs across restarts. Start
+with one service replica; keep Railway Serverless sleep disabled so the worker
+continues running. `/healthz` checks Postgres; authenticated `/api/integrations`
+reports the last successful monitoring cycle and connection configuration.
+
+## Later
+
+- MCP adapter if an external assistant needs to query the plant.
+- Vercel AI SDK if streaming or model-driven tools become necessary.
+- Slack mentions/DM events; the current interface is `/plant` commands.
+- Species profiles, calibration, and data-retention policies.
+- Hardware firmware, Wi-Fi retry/buffering, and battery testing.
+
+Soil moisture is a relative calibrated index, not volumetric water content.
+Thresholds are provisional and need plant-specific tuning.
+
+Sources: [OpenRouter API](https://openrouter.ai/docs/api_reference/overview),
+[Slack commands](https://docs.slack.dev/interactivity/implementing-slash-commands/),
+[MCP versions](https://ts.sdk.modelcontextprotocol.io/v2/protocol-versions).

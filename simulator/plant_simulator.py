@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import random
@@ -13,6 +14,11 @@ from datetime import UTC, datetime
 from typing import Iterator
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+try:
+    from .reporting import ReportingPolicy
+except ImportError:
+    from reporting import ReportingPolicy
 
 
 SCENARIOS = ("normal", "dry-out", "low-battery", "heat-wave", "noisy")
@@ -127,6 +133,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=0, help="0 sends forever")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--event-driven", action="store_true", help="Send changes and occasional silent check-ins")
+    parser.add_argument("--checkin-seconds", type=float, default=3600)
+    parser.add_argument("--confirm-seconds", type=float, default=120)
     return parser.parse_args()
 
 
@@ -137,8 +146,16 @@ def main() -> int:
 
     readings = generate_readings(args.device_id, args.scenario, args.seed)
     sent = 0
+    policy = ReportingPolicy(args.checkin_seconds, args.confirm_seconds)
+    failures = 0
     try:
         for payload in readings:
+            prior = copy.deepcopy(policy)
+            if args.event_driven:
+                payload = policy.select(payload, time.monotonic())
+            if payload is None:
+                time.sleep(max(0.0, args.interval))
+                continue
             if args.dry_run:
                 print(json.dumps(payload, indent=2))
             else:
@@ -147,6 +164,8 @@ def main() -> int:
                     print(f"sent {payload['recorded_at']} status={status}")
                 except (HTTPError, URLError, TimeoutError) as error:
                     print(f"send failed: {error}")
+                    failures += 1
+                    policy = prior
 
             sent += 1
             if args.count and sent >= args.count:
@@ -154,7 +173,7 @@ def main() -> int:
             time.sleep(max(0.0, args.interval))
     except KeyboardInterrupt:
         print("stopped")
-    return 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
