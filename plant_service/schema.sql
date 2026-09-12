@@ -2,8 +2,12 @@ CREATE TABLE IF NOT EXISTS devices (
  device_id text NOT NULL, source text NOT NULL CHECK (source IN ('hardware','simulator')),
  last_seen timestamptz NOT NULL DEFAULT now(), observed_at timestamptz NOT NULL,
  latest jsonb NOT NULL, conditions jsonb NOT NULL DEFAULT '[]',
+ sensor_placement text NOT NULL DEFAULT 'unknown'
+  CHECK (sensor_placement IN ('unknown','bench_air','foliage_substrate','orchid_bark')),
  PRIMARY KEY(device_id,source)
 );
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS sensor_placement text NOT NULL DEFAULT 'unknown'
+ CHECK (sensor_placement IN ('unknown','bench_air','foliage_substrate','orchid_bark'));
 CREATE TABLE IF NOT EXISTS readings (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
  device_id text NOT NULL, source text NOT NULL, recorded_at timestamptz NOT NULL,

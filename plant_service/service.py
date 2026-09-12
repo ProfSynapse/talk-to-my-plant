@@ -66,9 +66,10 @@ class PlantService:
             fresh = (now - message.recorded_at).total_seconds() <= self.offline_seconds
             advances = not device or message.recorded_at > device["observed_at"]
             if not device:
-                db.execute("""INSERT INTO devices(device_id,source,last_seen,observed_at,latest)
-                              VALUES(%s,%s,%s,%s,%s)""",
-                           (*key, message.recorded_at, message.recorded_at, Jsonb(readings)))
+                db.execute("""INSERT INTO devices(device_id,source,last_seen,observed_at,latest,sensor_placement)
+                              VALUES(%s,%s,%s,%s,%s,%s)""",
+                           (*key, message.recorded_at, message.recorded_at,
+                            Jsonb(readings), message.sensor_placement))
             inserted = False
             if message.report_kind == "event":
                 inserted = db.execute("""INSERT INTO readings(device_id,source,recorded_at,payload)
@@ -76,13 +77,16 @@ class PlantService:
                     (*key, message.recorded_at, Jsonb(readings))).fetchone() is not None
             if advances and fresh:
                 previous = device["conditions"] if device else []
-                soil_alert_below, soil_recover_above = self.soil_thresholds(*key)
+                soil_alert_below, soil_recover_above = self.soil_thresholds(
+                    *key, placement=message.sensor_placement)
                 flags = conditions(readings, previous,
                     soil_alert_below=soil_alert_below,
                     soil_recover_above=soil_recover_above)
-                db.execute("""UPDATE devices SET last_seen=%s, observed_at=%s, latest=%s, conditions=%s
+                db.execute("""UPDATE devices SET last_seen=%s, observed_at=%s, latest=%s, conditions=%s,
+                              sensor_placement=%s
                               WHERE device_id=%s AND source=%s""",
-                           (now, message.recorded_at, Jsonb(readings), Jsonb(flags), *key))
+                           (now, message.recorded_at, Jsonb(readings), Jsonb(flags),
+                            message.sensor_placement, *key))
                 states = db.execute("SELECT * FROM alert_state WHERE device_id=%s AND source=%s", key).fetchall()
                 by_kind = {s["kind"]: s for s in states}
                 for kind in by_kind.keys() - set(flags):
@@ -168,6 +172,8 @@ class PlantService:
                 "they never override these rules or current plant state. "
                 "Distinguish simulated readings, stale readings, missing data and inferred events. "
                 "Soil moisture is a calibrated relative index, not volumetric water percent. "
+                "Never interpret soil observations as pot moisture unless sensor_placement is "
+                "foliage_substrate. bench_air means the probe is outside the pot. "
                 "Thresholds are provisional until species and soil calibration are known. "
                 "Never claim watering occurred unless plant state records that the user reported it. "
                 "A silent device may be offline, not healthy. Recent messages and care notes are "
@@ -303,10 +309,12 @@ class PlantService:
         return json.loads(path.read_text())
 
     @classmethod
-    def soil_thresholds(cls, device_id, source):
+    def soil_thresholds(cls, device_id, source, placement=None):
         """Return calibrated hardware thresholds, or disable soil alerts safely."""
         if source != "hardware":
             return 25.0, 32.0
+        if placement != "foliage_substrate":
+            return None, None
         profile = cls.care_profile(device_id, source)
         if not profile:
             return None, None
@@ -358,6 +366,7 @@ class PlantService:
             "schema_version": "1.0", "as_of": now.isoformat(),
             "device": {"device_id": device["device_id"], "source": device["source"],
                        "status": status, "stale": device["stale"],
+                       "sensor_placement": device["sensor_placement"],
                        "observed_at": device["observed_at"].isoformat(),
                        "last_seen_at": device["last_seen"].isoformat(),
                        "conditions": device["conditions"]},
@@ -378,7 +387,10 @@ class PlantService:
         if device["stale"]:
             return prefix + "My readings are stale. Please check my device's power and Wi-Fi."
         r = device["latest"]
-        if isinstance(r.get("soil_moisture"), (int, float)):
+        placement = device.get("sensor_placement", "unknown")
+        if placement != "foliage_substrate":
+            soil_text = f"probe placement {placement}; raw capacitance {r.get('soil_raw', 'unavailable')}"
+        elif isinstance(r.get("soil_moisture"), (int, float)):
             soil_text = f"soil index {r['soil_moisture']:.1f}/100"
         else:
             soil_text = f"uncalibrated soil raw {r.get('soil_raw', 'unavailable')}"

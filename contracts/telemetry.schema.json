@@ -17,6 +17,11 @@
     "device_id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
     "recorded_at": { "type": "string", "format": "date-time" },
     "source": { "enum": ["simulator", "hardware"] },
+    "sensor_placement": {
+      "enum": ["unknown", "bench_air", "foliage_substrate", "orchid_bark"],
+      "default": "unknown",
+      "description": "Physical context required before interpreting soil observations"
+    },
     "conditions": {
       "type": "array",
       "items": { "type": "string" },

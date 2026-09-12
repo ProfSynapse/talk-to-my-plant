@@ -136,7 +136,8 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(profile["moisture_zones"][0]["id"], "foliage_substrate")
         self.assertEqual(profile["moisture_zones"][0]["telemetry_field"], "soil_moisture")
         self.assertIsNone(profile["moisture_zones"][0]["calibrated_sensor_targets"])
-        self.assertEqual(self.service.soil_thresholds("plant-001", "hardware"),
+        self.assertEqual(self.service.soil_thresholds(
+                         "plant-001", "hardware", placement="bench_air"),
                          (None, None))
         self.assertNotIn("needs_water", conditions(
             {"soil_moisture": 5, "temperature_f": 72, "humidity": 60,
@@ -156,6 +157,7 @@ class ServiceTests(unittest.TestCase):
     def test_uncalibrated_hardware_logs_raw_soil_without_water_alert(self):
         message = Telemetry(
             schema_version="1.2", device_id=self.device_id, source="hardware",
+            sensor_placement="bench_air",
             recorded_at=self.now, report_kind="event",
             readings={"soil_raw": 711, "temperature_f": 72, "humidity": 60,
                       "pressure_hpa": 1013, "battery_percent": 90,
@@ -164,9 +166,10 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(result["logged"])
         snapshot = self.service.status(self.device_id, "hardware")
         self.assertEqual(snapshot["device"]["latest"]["soil_raw"], 711)
+        self.assertEqual(snapshot["device"]["sensor_placement"], "bench_air")
         self.assertIsNone(snapshot["device"]["latest"]["soil_moisture"])
         self.assertNotIn("needs_water", snapshot["device"]["conditions"])
-        self.assertIn("uncalibrated soil raw 711",
+        self.assertIn("probe placement bench_air; raw capacitance 711",
                       self.service.fallback(snapshot))
 
     def test_simulated_alerts_never_send_by_default(self):

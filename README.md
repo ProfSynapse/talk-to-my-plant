@@ -7,6 +7,8 @@ The project is intentionally split at the telemetry boundary. The software can
 be built against simulated readings and then use the real Adafruit hardware
 without changing the backend, alerts, or chat integrations. Telemetry schema
 `1.2` can retain a raw soil observation before an honest calibrated index exists.
+Each hardware report also declares whether the probe is in `bench_air` or an
+actual substrate zone, so out-of-pot readings cannot be mistaken for moisture.
 
 ## Hosted service
 

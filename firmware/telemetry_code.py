@@ -53,6 +53,7 @@ def boolean_setting(name, default=False):
 WIFI_SSID = setting("CIRCUITPY_WIFI_SSID")
 WIFI_PASSWORD = setting("CIRCUITPY_WIFI_PASSWORD")
 DEVICE_ID = setting("PLANT_DEVICE_ID", "plant-001")
+SENSOR_PLACEMENT = setting("PLANT_SENSOR_PLACEMENT", "bench_air")
 TELEMETRY_URL = setting("PLANT_TELEMETRY_URL")
 API_KEY = setting("PLANT_API_KEY")
 CALIBRATION_MODE = boolean_setting("PLANT_CALIBRATION_MODE", True)
@@ -61,6 +62,8 @@ if not all((WIFI_SSID, WIFI_PASSWORD, DEVICE_ID, TELEMETRY_URL, API_KEY)):
     raise RuntimeError("Complete the required values in settings.toml")
 if not TELEMETRY_URL.startswith("https://"):
     raise RuntimeError("PLANT_TELEMETRY_URL must use HTTPS")
+if SENSOR_PLACEMENT not in ("bench_air", "foliage_substrate", "orchid_bark"):
+    raise RuntimeError("Invalid PLANT_SENSOR_PLACEMENT")
 
 
 def clamp(value, minimum, maximum):
@@ -117,6 +120,7 @@ def changed_enough(current, previous):
 print("Talk to My Plant telemetry", FIRMWARE_VERSION)
 print("Reset reason:", microcontroller.cpu.reset_reason)
 print("Calibration logging:", CALIBRATION_MODE)
+print("Sensor placement:", SENSOR_PLACEMENT)
 
 i2c = board.STEMMA_I2C()
 found = scan_i2c(i2c)
@@ -204,6 +208,7 @@ while True:
                 "schema_version": "1.2",
                 "device_id": DEVICE_ID,
                 "source": "hardware",
+                "sensor_placement": SENSOR_PLACEMENT,
                 "recorded_at": iso_utc(),
                 "report_kind": kind,
                 "conditions": active,

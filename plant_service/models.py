@@ -30,6 +30,8 @@ class Telemetry(StrictModel):
     schema_version: Literal["1.0", "1.1", "1.2"] = "1.2"
     device_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     source: Literal["simulator", "hardware"]
+    sensor_placement: Literal["unknown", "bench_air", "foliage_substrate",
+                              "orchid_bark"] = "unknown"
     recorded_at: datetime
     readings: Readings
     report_kind: Literal["event", "checkin"] = "event"
