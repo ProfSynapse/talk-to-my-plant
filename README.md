@@ -18,7 +18,8 @@ using [the connection guide](docs/SLACK.md) to enable model replies and delivery
 
 Postgres stores sensor logs, care events, alert state, and conversation memory.
 Each reply sees the last three complete turns plus compact memories from the
-past seven days. The model returns both a user-facing `response` and a terse
+past seven days, selected within a 32,000-token total context ceiling. The model
+returns both a user-facing `response` and a terse
 `memory`; Postgres keeps both alongside the original user text. Change the
 `MEMORY_*` variables, `OPENROUTER_PRIMARY_MODEL`, or
 `OPENROUTER_FALLBACK_MODEL` in Railway to tune that behavior. OpenRouter tries
@@ -72,13 +73,16 @@ Simulator now / Feather later
 
 - **Railway:** durable API, history, plant state, rules, and conversational context.
 - **Postgres:** sensor history, recent-message memory, care records, and durable jobs.
-- **OpenRouter:** your choice of model, with sensor and conversation context supplied.
+- **OpenRouter:** your choice of model, with sensor, sourced species-care, and conversation context supplied.
 - **Slack:** `/plant` conversation and webhook notifications for problems.
 - **Monitoring:** rules run quietly; no scheduled LLM calls or healthy-status messages.
 - **Shared contract:** [`contracts/telemetry.schema.json`](contracts/telemetry.schema.json)
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
-[`docs/HARDWARE.md`](docs/HARDWARE.md) for the working plan.
+[`docs/HARDWARE.md`](docs/HARDWARE.md) for the working plan. The versioned
+[`plant-001` care profile](plant_service/profiles/plant-001.json) records the five
+occupants, shared environmental target, separate moisture zones, evidence links,
+and the current absence of calibrated soil-index targets.
 
 ## Run the service locally
 

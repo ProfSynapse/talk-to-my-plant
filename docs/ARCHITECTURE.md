@@ -11,7 +11,7 @@ attempts, care events, completed conversation turns, and queued Slack requests.
 Every completed turn stores the original user text, the full user-facing model
 response, and a model-generated compact memory of the whole exchange. Each model
 call receives compact memories from the past `MEMORY_COMPACT_DAYS` (default 7,
-bounded by turn and character caps) plus the last `MEMORY_RECENT_TURNS` complete
+bounded by turn and total token-budget caps) plus the last `MEMORY_RECENT_TURNS` complete
 turns verbatim (default 3, even if the conversation has been idle longer than a
 week). Full history remains in Postgres and is not deleted
 when prompt windows change. Memory is scoped to plant, source, and conversation
@@ -21,13 +21,30 @@ Conversation memory is narrative and untrusted. It never determines current
 plant health. The server separately builds a compact authoritative state object:
 current readings and timestamps, source/staleness/status, active conditions and
 alerts, 24-hour min/max/change aggregates, and the three latest user-reported
-care events. Raw reading rows are not copied into the model prompt.
+care events. For real hardware it also includes the versioned, sourced care
+profile in `plant_service/profiles/plant-001.json`. Raw reading rows are not
+copied into the model prompt.
+
+The mixed arrangement has two explicit moisture zones. Maranta, Fittonia and
+Ctenanthe share a foliage-substrate zone that should remain evenly moist and
+well drained; the Phalaenopsis requires open bark that approaches dry between
+waterings. The single soil probe represents only the foliage zone. Numerical
+soil-index targets remain null until the installed probe is calibrated in that
+specific location. Ambient targets are shared operational compromises derived
+from cited species guidance, not claims that every occupant has identical needs.
 
 The stable system prompt contains identity, behavioral rules, data authority,
 and safety constraints. A second system message contains only the authoritative
 plant-state JSON. If older compact memories exist, a third system message labels
 them as untrusted narrative data. Recent verbatim turns retain their normal user
 and assistant roles; the current user message remains a plain user message.
+
+`MEMORY_CONTEXT_TOKENS` defaults to 32,000 for the complete request. The server
+reserves `OPENROUTER_MAX_OUTPUT_TOKENS` (default 1,200) plus a safety margin,
+estimates the fixed system/state/current-message cost conservatively, admits the
+newest verbatim turns, and then fills the remainder with newest compact memories.
+This is a cross-model estimate rather than tokenizer-specific accounting, so the
+three-characters-per-token assumption intentionally errs on the safe side.
 
 OpenRouter is called once per reply with assembled context and a strict JSON
 schema requiring `response` and `memory`. Set

@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "profile_version": "2026-09-12",
+  "display_name": "Mixed prayer-plant and moth-orchid arrangement",
+  "identification_basis": "User accepted the photo-based first-pass identification as authoritative for this prototype.",
+  "occupants": [
+    {
+      "id": "phalaenopsis",
+      "common_name": "Moth orchid",
+      "scientific_name": "Phalaenopsis hybrid",
+      "light": "Bright filtered or indirect light; avoid strong direct summer or midday sun.",
+      "temperature_f": {"day_min": 66, "day_max": 86, "night_min": 61, "night_max": 66},
+      "humidity_percent": {"min": 50, "max": 80},
+      "root_moisture": "Use open bark-based orchid medium. Water thoroughly, drain completely, and water again when nearly dry; do not keep soggy or let roots remain completely dry.",
+      "source_ids": ["aos_phalaenopsis", "rhs_phalaenopsis"]
+    },
+    {
+      "id": "maranta_lemon_lime",
+      "common_name": "Lemon Lime prayer plant",
+      "scientific_name": "Maranta leuconeura 'Lemon Lime'",
+      "light": "Bright filtered or indirect light; direct sun can bleach or scorch foliage.",
+      "temperature_f": {"minimum": 59, "operational_min": 65, "operational_max": 80},
+      "humidity": "High humidity preferred.",
+      "root_moisture": "Keep evenly moist during active growth but not waterlogged; reduce watering in winter without allowing prolonged complete dryness.",
+      "source_ids": ["ncsu_maranta", "rhs_maranta", "illinois_maranta"]
+    },
+    {
+      "id": "maranta_erythroneura",
+      "common_name": "Red-veined prayer plant",
+      "scientific_name": "Maranta leuconeura var. erythroneura",
+      "light": "Bright filtered or indirect light; direct sun can bleach or scorch foliage.",
+      "temperature_f": {"minimum": 59, "operational_min": 65, "operational_max": 80},
+      "humidity": "High humidity preferred.",
+      "root_moisture": "Keep evenly moist during active growth but not waterlogged; reduce watering in winter without allowing prolonged complete dryness.",
+      "source_ids": ["ncsu_maranta", "rhs_maranta", "illinois_maranta"]
+    },
+    {
+      "id": "fittonia",
+      "common_name": "Nerve plant",
+      "scientific_name": "Fittonia albivenis",
+      "light": "Bright to medium indirect light; avoid direct sun.",
+      "temperature_f": {"minimum": 63, "operational_min": 68, "operational_max": 78},
+      "humidity": "High humidity preferred.",
+      "root_moisture": "Keep moist and well drained; do not allow complete drying or waterlogging.",
+      "source_ids": ["ncsu_fittonia", "rhs_fittonia"]
+    },
+    {
+      "id": "ctenanthe_amagris",
+      "common_name": "Fishbone prayer plant",
+      "scientific_name": "Ctenanthe burle-marxii 'Amagris'",
+      "light": "Bright indirect light; avoid direct sun.",
+      "temperature_f": {"operational_min": 61, "operational_max": 70},
+      "humidity": "High humidity preferred.",
+      "root_moisture": "Keep evenly moist in the growing season and moist but not soggy in winter.",
+      "source_ids": ["rhs_ctenanthe_group", "rhs_ctenanthe_species"]
+    }
+  ],
+  "shared_environment": {
+    "temperature_f": {
+      "preferred_min": 68,
+      "preferred_max": 75,
+      "acceptable_min": 63,
+      "acceptable_max": 80,
+      "alert_below": 61,
+      "alert_above": 85,
+      "basis": "Conservative operational overlap inferred from the sourced species ranges; stable conditions and avoidance of drafts matter more than an exact point target."
+    },
+    "humidity_percent": {
+      "preferred_min": 60,
+      "preferred_max": 70,
+      "acceptable_min": 50,
+      "acceptable_max": 80,
+      "alert_below": 45,
+      "basis": "Phalaenopsis has a sourced 50-80% range; the foliage species consistently require high humidity. Values are an operational shared target, not a universal biological threshold."
+    },
+    "light": "Bright indirect or filtered light with no strong direct midday sun.",
+    "airflow": "Provide gentle air movement, especially at high humidity, while avoiding cold or hot drafts."
+  },
+  "moisture_zones": [
+    {
+      "id": "foliage_substrate",
+      "occupant_ids": ["maranta_lemon_lime", "maranta_erythroneura", "fittonia", "ctenanthe_amagris"],
+      "requirement": "Evenly moist and well drained, never continuously soggy.",
+      "sensor_scope": "The single capacitive soil probe should be installed here. Its calibrated index describes this local zone only.",
+      "calibrated_sensor_targets": null
+    },
+    {
+      "id": "orchid_bark",
+      "occupant_ids": ["phalaenopsis"],
+      "requirement": "Open bark medium that drains freely and becomes nearly dry between thorough waterings.",
+      "sensor_scope": "Not represented by the foliage-zone probe; assess orchid roots and bark separately unless a second calibrated probe is added.",
+      "calibrated_sensor_targets": null
+    }
+  ],
+  "interpretation_rules": [
+    "Never translate generic care guidance directly into the 0-100 soil index before in-pot calibration.",
+    "A single soil reading cannot establish the moisture condition of both substrate zones.",
+    "If the orchid and foliage roots share one undivided medium, report the incompatible moisture requirements rather than claiming one moisture target is optimal for every occupant.",
+    "Treat care ranges as guidance and current sensor measurements as observations; neither alone proves plant health."
+  ],
+  "sources": [
+    {"id": "aos_phalaenopsis", "title": "American Orchid Society — Phalaenopsis Culture Sheet", "url": "https://www.aos.org/orchid-care/care-sheets/phalaenopsis-culture-sheet"},
+    {"id": "rhs_phalaenopsis", "title": "Royal Horticultural Society — How to grow Phalaenopsis", "url": "https://www.rhs.org.uk/plants/phalaenopsis/growing-guide"},
+    {"id": "ncsu_maranta", "title": "NC State Extension — Maranta leuconeura", "url": "https://plants.ces.ncsu.edu/plants/maranta-leuconeura/common-name/prayer-plant/"},
+    {"id": "rhs_maranta", "title": "Royal Horticultural Society — Maranta leuconeura", "url": "https://www.rhs.org.uk/plants/119598/maranta-leuconeura/details"},
+    {"id": "illinois_maranta", "title": "Illinois Extension — Prayer Plant", "url": "https://extension.illinois.edu/houseplants/prayer-plant"},
+    {"id": "ncsu_fittonia", "title": "NC State Extension — Fittonia albivenis", "url": "https://plants.ces.ncsu.edu/plants/fittonia-albivenis/"},
+    {"id": "rhs_fittonia", "title": "Royal Horticultural Society — How to grow Fittonia", "url": "https://www.rhs.org.uk/plants/fittonia/how-to-grow-fittonia"},
+    {"id": "rhs_ctenanthe_group", "title": "Royal Horticultural Society — How to grow calatheas, including Ctenanthe", "url": "https://www.rhs.org.uk/plants/calathea/growing-guide"},
+    {"id": "rhs_ctenanthe_species", "title": "Royal Horticultural Society — Ctenanthe burle-marxii", "url": "https://www.rhs.org.uk/plants/183286/ctenanthe-burle-marxii-var-burle-marxii/details"}
+  ]
+}

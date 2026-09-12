@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from plant_service.app import create_app
 from plant_service.models import Chat, Telemetry
+from plant_service.rules import conditions
 from plant_service.service import PlantService, Conflict, utcnow
 from simulator.reporting import ReportingPolicy
 
@@ -99,6 +100,12 @@ class ServiceTests(unittest.TestCase):
             ["primary-test-model", "fallback-test-model"],
         )
         self.assertEqual(request_body["provider"], {"require_parameters": True})
+        self.assertEqual(request_body["max_tokens"], 1200)
+        self.assertLessEqual(
+            self.service.estimate_tokens(request_body["messages"]) +
+            request_body["max_tokens"],
+            self.service.memory_context_tokens,
+        )
         schema = request_body["response_format"]["json_schema"]["schema"]
         self.assertEqual(schema["required"], ["response", "memory"])
         sent = request_body["messages"]
@@ -122,6 +129,22 @@ class ServiceTests(unittest.TestCase):
         other = msg.model_copy(update={"request_id":uuid.uuid4().hex,"conversation_id":"other-"+conversation})
         self.service.chat(other)
         self.assertEqual(len(json.loads(self.requests[-1].content)["messages"]),3)
+
+    def test_hardware_care_profile_and_species_thresholds(self):
+        profile = self.service.status("plant-001", "hardware")["care_profile"]
+        self.assertEqual(len(profile["occupants"]), 5)
+        self.assertEqual(profile["moisture_zones"][0]["id"], "foliage_substrate")
+        self.assertIsNone(profile["moisture_zones"][0]["calibrated_sensor_targets"])
+        self.assertIn("too_cold", conditions({"soil_moisture":50, "temperature_f":60,
+            "humidity":60, "battery_percent":90}))
+        self.assertIn("air_too_dry", conditions({"soil_moisture":50, "temperature_f":72,
+            "humidity":44, "battery_percent":90}))
+        self.service.chat(Chat(request_id=uuid.uuid4().hex,
+            conversation_id=uuid.uuid4().hex, device_id="plant-001",
+            source="hardware", text="Which plants live here?"))
+        request_body = json.loads(self.requests[-1].content)
+        state = json.loads(request_body["messages"][1]["content"].split("\n", 1)[1])
+        self.assertEqual(len(state["care_profile"]["occupants"]), 5)
 
     def test_simulated_alerts_never_send_by_default(self):
         self.ingest(offset=-180,soil=10)
