@@ -43,7 +43,10 @@ def create_app(service=None, *, settings=None, run_worker=True):
         if len(cfg.get("PLANT_API_KEY", "")) < 32:
             raise RuntimeError("PLANT_API_KEY must contain at least 32 characters")
         app.state.service = service or PlantService(cfg["DATABASE_URL"],
-            memory_messages=int(cfg.get("MEMORY_MESSAGES", "20")),
+            memory_recent_turns=int(cfg.get("MEMORY_RECENT_TURNS", "3")),
+            memory_compact_days=int(cfg.get("MEMORY_COMPACT_DAYS", "7")),
+            memory_compact_turns=int(cfg.get("MEMORY_COMPACT_TURNS", "50")),
+            memory_compact_chars=int(cfg.get("MEMORY_COMPACT_CHARS", "6000")),
             confirm_seconds=int(cfg.get("ALERT_CONFIRM_SECONDS", "120")),
             offline_seconds=int(cfg.get("OFFLINE_AFTER_SECONDS", "10800")),
             openrouter_key=cfg.get("OPENROUTER_API_KEY", ""),
@@ -82,7 +85,7 @@ def create_app(service=None, *, settings=None, run_worker=True):
         if service is None:
             app.state.service.close()
 
-    app = FastAPI(title="Talk to My Plant", version="0.2.0", lifespan=lifespan,
+    app = FastAPI(title="Talk to My Plant", version="0.3.0", lifespan=lifespan,
                   docs_url=None, redoc_url=None, openapi_url=None)
 
     @app.middleware("http")
@@ -163,7 +166,10 @@ def create_app(service=None, *, settings=None, run_worker=True):
             "model":primary_model or "OpenRouter account default",
             "primary_model":primary_model or "OpenRouter account default",
             "fallback_model":cfg.get("OPENROUTER_FALLBACK_MODEL") or None,
-            "memory_messages":app.state.service.memory_messages,
+            "memory_recent_turns":app.state.service.memory_recent_turns,
+            "memory_compact_days":app.state.service.memory_compact_days,
+            "memory_compact_turns":app.state.service.memory_compact_turns,
+            "memory_compact_chars":app.state.service.memory_compact_chars,
             "slack_alerts_configured":bool(cfg.get("SLACK_WEBHOOK_URL")),
             "slack_commands_configured":all(cfg.get(k) for k in ("SLACK_SIGNING_SECRET","SLACK_TEAM_ID","SLACK_ALLOWED_USER_IDS")),
             "monitor":monitor, "pending_slack_replies":backlog["count"]}

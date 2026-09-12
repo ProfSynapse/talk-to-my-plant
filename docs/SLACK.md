@@ -12,8 +12,10 @@ unavailable, rate-limited, or refuses the request, OpenRouter tries the fallback
 within the same API request. Leave the primary blank only if you intentionally
 want to use the OpenRouter account default. `OPENROUTER_MODEL` remains a
 temporary backward-compatible alias for the primary model.
-`MEMORY_MESSAGES=20` controls the recent conversation window. Postgres keeps the
-full history; changing the window does not delete records.
+`MEMORY_RECENT_TURNS=3` controls the verbatim rolling window.
+`MEMORY_COMPACT_DAYS=7`, `MEMORY_COMPACT_TURNS=50`, and
+`MEMORY_COMPACT_CHARS=6000` bound the compact-memory layer. Postgres keeps the
+full text and compact memory; changing prompt windows does not delete records.
 
 ## Slack app
 

@@ -8,13 +8,29 @@ small monitoring/delivery worker. No agent loop, MCP, Redis, or n8n is required.
 
 Postgres stores readings, current device state, alert transitions and delivery
 attempts, care events, completed conversation turns, and queued Slack requests.
-Each model call receives the last `MEMORY_MESSAGES` messages (default 20), the
-current state with timestamps, up to 24 recent event readings, active alerts,
-and the last 10 care records. Old and simulated data are explicitly labeled.
-Memory is scoped to plant, source, and conversation ID. Slack slash-command
-memory is separated by workspace, channel, and user.
+Every completed turn stores the original user text, the full user-facing model
+response, and a model-generated compact memory of the whole exchange. Each model
+call receives compact memories from the past `MEMORY_COMPACT_DAYS` (default 7,
+bounded by turn and character caps) plus the last `MEMORY_RECENT_TURNS` complete
+turns verbatim (default 3, even if the conversation has been idle longer than a
+week). Full history remains in Postgres and is not deleted
+when prompt windows change. Memory is scoped to plant, source, and conversation
+ID. Slack slash-command memory is separated by workspace, channel, and user.
 
-OpenRouter is called once per reply with assembled context. Set
+Conversation memory is narrative and untrusted. It never determines current
+plant health. The server separately builds a compact authoritative state object:
+current readings and timestamps, source/staleness/status, active conditions and
+alerts, 24-hour min/max/change aggregates, and the three latest user-reported
+care events. Raw reading rows are not copied into the model prompt.
+
+The stable system prompt contains identity, behavioral rules, data authority,
+and safety constraints. A second system message contains only the authoritative
+plant-state JSON. If older compact memories exist, a third system message labels
+them as untrusted narrative data. Recent verbatim turns retain their normal user
+and assistant roles; the current user message remains a plain user message.
+
+OpenRouter is called once per reply with assembled context and a strict JSON
+schema requiring `response` and `memory`. Set
 `OPENROUTER_MODEL` to a model ID; leave it blank to use the account default.
 Without a key, chat returns an explicitly labeled factual status response.
 There is no model call during telemetry ingestion or periodic monitoring.

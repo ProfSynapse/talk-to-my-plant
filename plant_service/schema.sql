@@ -33,10 +33,13 @@ CREATE TABLE IF NOT EXISTS care_events (
 CREATE TABLE IF NOT EXISTS chat_turns (
  request_id text PRIMARY KEY, conversation_id text NOT NULL,
  device_id text NOT NULL, source text NOT NULL,
- user_text text NOT NULL, assistant_text text, model text,
+ user_text text NOT NULL, assistant_text text, memory_text text, model text,
  created_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz
 );
+ALTER TABLE chat_turns ADD COLUMN IF NOT EXISTS memory_text text;
 CREATE INDEX IF NOT EXISTS chat_memory ON chat_turns(conversation_id,device_id,source,created_at DESC);
+CREATE INDEX IF NOT EXISTS chat_compact_memory ON chat_turns(conversation_id,device_id,source,created_at DESC)
+ WHERE completed_at IS NOT NULL AND memory_text IS NOT NULL;
 CREATE TABLE IF NOT EXISTS slack_jobs (
  id text PRIMARY KEY, conversation_id text NOT NULL, device_id text NOT NULL,
  source text NOT NULL, text text NOT NULL, response_url text NOT NULL,

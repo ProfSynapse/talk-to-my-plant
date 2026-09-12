@@ -17,8 +17,10 @@ labeled simulated readings. Set your OpenRouter key and install the Slack app
 using [the connection guide](docs/SLACK.md) to enable model replies and delivery.
 
 Postgres stores sensor logs, care events, alert state, and conversation memory.
-Each reply sees the last 20 messages by default plus recent sensor/care context.
-Change `MEMORY_MESSAGES`, `OPENROUTER_PRIMARY_MODEL`, or
+Each reply sees the last three complete turns plus compact memories from the
+past seven days. The model returns both a user-facing `response` and a terse
+`memory`; Postgres keeps both alongside the original user text. Change the
+`MEMORY_*` variables, `OPENROUTER_PRIMARY_MODEL`, or
 `OPENROUTER_FALLBACK_MODEL` in Railway to tune that behavior. OpenRouter tries
 the two configured models in order and reports which one answered.
 This version makes one OpenRouter call per reply; it needs no agent loop or MCP.
@@ -115,7 +117,17 @@ Chat body example:
 ```
 
 Reuse a request ID only to retry the same message. Conversation IDs isolate
-memory. Without an OpenRouter key, responses explicitly use factual status only.
+memory. A successful response includes `response`, `memory`, `model`, and
+`cached`. Without an OpenRouter key, responses explicitly use factual status only.
+
+```json
+{
+  "response": "I'm comfortable right now. My latest readings look steady.",
+  "memory": "User asked for current status; plant reported comfortable, steady conditions.",
+  "model": "provider/model-id",
+  "cached": false
+}
+```
 
 Run tests with `TEST_DATABASE_URL` pointing to a disposable Postgres database:
 

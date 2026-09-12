@@ -25,9 +25,12 @@ class ServiceTests(unittest.TestCase):
         def mock(request):
             cls.requests.append(request)
             if request.url.host == "openrouter.ai":
-                return httpx.Response(200, json={"model":"test-model", "choices":[{"message":{"content":"My remembered reply"}}]})
+                content = json.dumps({"response":"My remembered reply",
+                                      "memory":"User spoke; plant replied."})
+                return httpx.Response(200, json={"model":"test-model", "choices":[{"message":{"content":content}}]})
             return httpx.Response(200, text="ok")
-        cls.service = PlantService(os.environ["TEST_DATABASE_URL"], memory_messages=3,
+        cls.service = PlantService(os.environ["TEST_DATABASE_URL"], memory_recent_turns=1,
+                                  memory_compact_days=7, memory_compact_turns=2,
                                   openrouter_key="test-key",
                                   primary_model="primary-test-model",
                                   fallback_model="fallback-test-model",
@@ -95,13 +98,24 @@ class ServiceTests(unittest.TestCase):
             request_body["models"],
             ["primary-test-model", "fallback-test-model"],
         )
+        self.assertEqual(request_body["provider"], {"require_parameters": True})
+        schema = request_body["response_format"]["json_schema"]["schema"]
+        self.assertEqual(schema["required"], ["response", "memory"])
         sent = request_body["messages"]
-        memory = sent[2:-1]
-        self.assertEqual(len(memory),3)
-        self.assertEqual(memory[-1]["content"],"My remembered reply")
-        self.assertIn("recent_readings",sent[1]["content"])
+        compact = json.loads(sent[2]["content"].split("\n", 1)[1])
+        self.assertEqual(len(compact["entries"]), 2)
+        self.assertEqual(compact["entries"][-1]["memory"], "User spoke; plant replied.")
+        recent = sent[3:-1]
+        self.assertEqual(len(recent), 2)
+        self.assertEqual(recent[-1]["content"], "My remembered reply")
+        state = json.loads(sent[1]["content"].split("\n", 1)[1])
+        self.assertNotIn("recent_readings", state)
+        self.assertIn("trends_24h", state)
         before = len(self.requests)
-        self.assertTrue(self.service.chat(msg)["cached"])
+        cached = self.service.chat(msg)
+        self.assertTrue(cached["cached"])
+        self.assertEqual(cached["response"], "My remembered reply")
+        self.assertEqual(cached["memory"], "User spoke; plant replied.")
         self.assertEqual(len(self.requests),before)
         with self.assertRaises(Conflict):
             self.service.chat(msg.model_copy(update={"text":"different"}))
