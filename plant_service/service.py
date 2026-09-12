@@ -456,7 +456,7 @@ class PlantService:
                 else:
                     answer = self.chat(Chat(request_id=job["id"], conversation_id=job["conversation_id"],
                         device_id=job["device_id"],source=job["source"],text=job["text"]))["response"]
-                response = self.http.post(job["response_url"], json={"response_type":"ephemeral", "text":answer}, timeout=10)
+                response = self.http.post(job["response_url"], json={"response_type":"in_channel", "text":answer}, timeout=10)
                 response.raise_for_status()
                 db.execute("UPDATE slack_jobs SET delivered_at=now(),attempts=attempts+1 WHERE id=%s", (job["id"],))
             except (httpx.HTTPError, Conflict):

@@ -173,7 +173,7 @@ def create_app(service=None, *, settings=None, run_worker=True):
             "memory_context_tokens":app.state.service.memory_context_tokens,
             "openrouter_max_output_tokens":app.state.service.openrouter_max_output_tokens,
             "slack_alerts_configured":bool(cfg.get("SLACK_WEBHOOK_URL")),
-            "slack_commands_configured":all(cfg.get(k) for k in ("SLACK_SIGNING_SECRET","SLACK_TEAM_ID","SLACK_ALLOWED_USER_IDS")),
+            "slack_commands_configured":all(cfg.get(k) for k in ("SLACK_SIGNING_SECRET","SLACK_TEAM_ID")),
             "monitor":monitor, "pending_slack_replies":backlog["count"]}
 
     @app.post("/slack/commands")
@@ -191,9 +191,14 @@ def create_app(service=None, *, settings=None, run_worker=True):
         params = {k:v[0] for k,v in parse_qs(body.decode()).items()}
         if not cfg.get("SLACK_TEAM_ID") or params.get("team_id") != cfg["SLACK_TEAM_ID"]:
             raise HTTPException(403, "Workspace not allowed")
-        allowed = cfg.get("SLACK_ALLOWED_USER_IDS", "").split(",")
-        if not params.get("user_id") or params["user_id"] not in allowed:
+        user_id = params.get("user_id", "")
+        allowed_users = {value.strip() for value in cfg.get("SLACK_ALLOWED_USER_IDS", "").split(",") if value.strip()}
+        if not user_id or (allowed_users and "*" not in allowed_users and user_id not in allowed_users):
             raise HTTPException(403, "User not allowed")
+        channel_id = params.get("channel_id", "")
+        allowed_channels = {value.strip() for value in cfg.get("SLACK_ALLOWED_CHANNEL_IDS", "").split(",") if value.strip()}
+        if not channel_id or (allowed_channels and "*" not in allowed_channels and channel_id not in allowed_channels):
+            raise HTTPException(403, "Channel not allowed")
         response_url = params.get("response_url", "")
         if not slack_url(response_url):
             raise HTTPException(400, "Invalid Slack response URL")
@@ -204,14 +209,15 @@ def create_app(service=None, *, settings=None, run_worker=True):
         if text == "demo" or text.startswith("demo "):
             source, device_id = "simulator", "demo-plant"
             text = text[4:].strip() or "How am I doing?"
-        conversation = ":".join(["slack",params["team_id"],params.get("channel_id", ""),params["user_id"],source])
+        # A channel shares one plant memory across all participating workspace members.
+        conversation = ":".join(["slack", params["team_id"], channel_id, source])
         request_id = hashlib.sha256(timestamp.encode() + b":" + body).hexdigest()
         # Commit before acknowledging Slack; worker can resume after restart.
         with app.state.service.pool.connection() as db:
             db.execute("""INSERT INTO slack_jobs(id,conversation_id,device_id,source,text,response_url)
                           VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
                        (request_id,conversation,device_id,source,text,response_url))
-        return {"response_type":"ephemeral", "text":"🌱 Checking my readings and memory…"}
+        return {"response_type":"in_channel", "text":"🌱 Checking my readings and memory…"}
 
     return app
 

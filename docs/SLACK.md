@@ -23,13 +23,17 @@ prompt windows does not delete records.
 
 1. Open https://api.slack.com/apps and create an app **from a manifest**.
 2. Paste [`slack-manifest.json`](slack-manifest.json) and select your workspace.
-3. Install the app. In **Basic Information**, copy its Signing Secret into
+3. Install the app. Slack requires the manifest's `bot_user` whenever a slash
+   command is present. In **Basic Information**, copy its Signing Secret into
    Railway as `SLACK_SIGNING_SECRET`.
-4. Set `SLACK_TEAM_ID` to your workspace ID and `SLACK_ALLOWED_USER_IDS` to your
-   Slack user ID (or comma-separated IDs). These checks prevent other workspace
-   members from reading private plant memory by invoking the command.
-5. In **Incoming Webhooks**, add a webhook for the channel where plant alerts
-   should go. Store that URL as `SLACK_WEBHOOK_URL` in Railway.
+4. Set `SLACK_TEAM_ID` to your workspace ID and `SLACK_ALLOWED_CHANNEL_IDS` to
+   the dedicated plant channel ID. Leave `SLACK_ALLOWED_USER_IDS` blank so every
+   workspace member can talk to the plant in that channel. A comma-separated
+   user allowlist remains available for private deployments.
+5. In **Incoming Webhooks**, activate the feature if Slack has not already done
+   so, then add a webhook for the channel where plant alerts should go. Slack
+   may ask you to reinstall the app to add the `incoming-webhook` permission.
+   Store the generated URL as `SLACK_WEBHOOK_URL` in Railway.
 
 Never paste credentials into the public repository or issue tracker. You can set
 them in the Railway UI, or use `railway variable set --service plant-api --stdin VARIABLE_NAME`
@@ -48,8 +52,10 @@ Try these commands after the app is installed:
 `plant-001`, which has no readings until hardware is connected. The `watered`
 command logs a user-reported care event; the model doesn't pretend it measured
 that action. `/plant demo watered` works for testing without changing real care
-records. Replies are ephemeral to the invoking user. Alerts go to the webhook's
-chosen channel and only fire for persistent problems or missing check-ins.
+records. The question and reply are public in the allowed channel, and all
+members there share the same plant conversation memory. Alerts go to the
+webhook's chosen channel and only fire for persistent problems or missing
+check-ins.
 
 Ordinary Slack DMs/mentions and voice are not implemented yet. The slash command
 provides the first conversation interface with persistent memory.
