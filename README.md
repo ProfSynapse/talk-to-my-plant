@@ -166,6 +166,25 @@ It will also need suitable mounting hardware, cable openings, and ventilation fo
 the BME280. A data-capable USB-C cable and 5 V USB adapter are required but do not
 need to be purchased if already available.
 
+## Feather power and reporting cadence
+
+The production CircuitPython firmware performs one complete cycle and then
+enters deep sleep: power the STEMMA QT sensors, read soil/climate/battery,
+connect to Wi-Fi, upload the observation, turn off Wi-Fi plus the STEMMA QT and
+NeoPixel power rails, and sleep until the next cycle.
+
+- While `PLANT_CALIBRATION_MODE = true`, every observation is retained at a
+  15-minute interval (`PLANT_CALIBRATION_INTERVAL_SECONDS = 900`).
+- After calibration is complete, every observation is retained hourly
+  (`PLANT_NORMAL_INTERVAL_SECONDS = 3600`).
+- A scheduled reading is only telemetry; it does not produce a user message.
+  Server-side rules notify Slack only after a problem is confirmed.
+- There is no special watering-event mode or manual watering trigger.
+
+The populated `settings.toml` remains private on the Feather. Only the redacted
+[`firmware/settings.toml.example`](firmware/settings.toml.example) belongs in
+source control.
+
 ## Planned milestones
 
 - [x] Define the telemetry contract

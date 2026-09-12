@@ -1,5 +1,7 @@
 """Production telemetry firmware for the Talk to My Plant Feather."""
 
+import alarm
+import digitalio
 import gc
 import os
 import rtc
@@ -16,20 +18,12 @@ from adafruit_max1704x import MAX17048
 from adafruit_seesaw.seesaw import Seesaw
 
 
-FIRMWARE_VERSION = "0.2.0-telemetry"
+FIRMWARE_VERSION = "0.3.0-deep-sleep"
 BME280_ADDRESS = 0x77
 SOIL_SENSOR_ADDRESS = 0x76
 
-SAMPLE_INTERVAL_SECONDS = 60
-CHECKIN_SECONDS = 3600
-CONFIRM_SECONDS = 120
-CALIBRATION_LOG_SECONDS = 300
-NTP_REFRESH_SECONDS = 21600
-
-TEMPERATURE_DELTA_F = 3.0
-HUMIDITY_DELTA_PERCENT = 5.0
-BATTERY_DELTA_PERCENT = 5.0
-SOIL_RAW_DELTA = 25
+DEFAULT_CALIBRATION_INTERVAL_SECONDS = 900
+DEFAULT_NORMAL_INTERVAL_SECONDS = 3600
 
 BATTERY_LOW_PERCENT = 30.0
 BATTERY_CRITICAL_PERCENT = 15.0
@@ -50,6 +44,13 @@ def boolean_setting(name, default=False):
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
+def integer_setting(name, default):
+    value = int(setting(name, default))
+    if value < 60:
+        raise RuntimeError(name + " must be at least 60 seconds")
+    return value
+
+
 WIFI_SSID = setting("CIRCUITPY_WIFI_SSID")
 WIFI_PASSWORD = setting("CIRCUITPY_WIFI_PASSWORD")
 DEVICE_ID = setting("PLANT_DEVICE_ID", "plant-001")
@@ -57,6 +58,19 @@ SENSOR_PLACEMENT = setting("PLANT_SENSOR_PLACEMENT", "bench_air")
 TELEMETRY_URL = setting("PLANT_TELEMETRY_URL")
 API_KEY = setting("PLANT_API_KEY")
 CALIBRATION_MODE = boolean_setting("PLANT_CALIBRATION_MODE", True)
+DEEP_SLEEP_ENABLED = boolean_setting("PLANT_DEEP_SLEEP_ENABLED", True)
+CALIBRATION_INTERVAL_SECONDS = integer_setting(
+    "PLANT_CALIBRATION_INTERVAL_SECONDS",
+    DEFAULT_CALIBRATION_INTERVAL_SECONDS,
+)
+NORMAL_INTERVAL_SECONDS = integer_setting(
+    "PLANT_NORMAL_INTERVAL_SECONDS",
+    DEFAULT_NORMAL_INTERVAL_SECONDS,
+)
+WAKE_INTERVAL_SECONDS = (
+    CALIBRATION_INTERVAL_SECONDS if CALIBRATION_MODE
+    else NORMAL_INTERVAL_SECONDS
+)
 
 if not all((WIFI_SSID, WIFI_PASSWORD, DEVICE_ID, TELEMETRY_URL, API_KEY)):
     raise RuntimeError("Complete the required values in settings.toml")
@@ -104,23 +118,11 @@ def conditions(readings):
     return active
 
 
-def changed_enough(current, previous):
-    if previous is None:
-        return True
-    limits = (
-        ("temperature_f", TEMPERATURE_DELTA_F),
-        ("humidity", HUMIDITY_DELTA_PERCENT),
-        ("battery_percent", BATTERY_DELTA_PERCENT),
-        ("soil_raw", SOIL_RAW_DELTA),
-    )
-    return any(abs(current[key] - previous[key]) >= delta
-               for key, delta in limits)
-
-
 print("Talk to My Plant telemetry", FIRMWARE_VERSION)
 print("Reset reason:", microcontroller.cpu.reset_reason)
 print("Calibration logging:", CALIBRATION_MODE)
 print("Sensor placement:", SENSOR_PLACEMENT)
+print("Deep sleep:", DEEP_SLEEP_ENABLED, "for", WAKE_INTERVAL_SECONDS, "seconds")
 
 i2c = board.STEMMA_I2C()
 found = scan_i2c(i2c)
@@ -138,28 +140,15 @@ pool = adafruit_connection_manager.get_radio_socketpool(wifi.radio)
 ssl_context = adafruit_connection_manager.get_radio_ssl_context(wifi.radio)
 http = adafruit_requests.Session(pool, ssl_context)
 
-clock_ready = False
-last_ntp_sync = -NTP_REFRESH_SECONDS
-last_sent_readings = None
-last_sent_conditions = None
-last_sent_at = -CHECKIN_SECONDS
-observed_conditions = None
-condition_started_at = None
-confirmation_delivered = False
-
-
-def ensure_network(now):
-    global clock_ready, last_ntp_sync
+def ensure_network():
     if not wifi.radio.connected:
         print("Connecting to Wi-Fi")
         wifi.radio.connect(WIFI_SSID, WIFI_PASSWORD)
         print("Wi-Fi connected; RSSI", wifi.radio.ap_info.rssi, "dBm")
-    if not clock_ready or now - last_ntp_sync >= NTP_REFRESH_SECONDS:
-        ntp = adafruit_ntp.NTP(pool, tz_offset=0, cache_seconds=3600)
-        rtc.RTC().datetime = ntp.datetime
-        clock_ready = True
-        last_ntp_sync = now
-        print("UTC clock synchronized")
+    # Deep sleep restarts code.py, so synchronize the clock once per wake.
+    ntp = adafruit_ntp.NTP(pool, tz_offset=0, cache_seconds=3600)
+    rtc.RTC().datetime = ntp.datetime
+    print("UTC clock synchronized")
 
 
 def read_sensors():
@@ -174,71 +163,80 @@ def read_sensors():
     }
 
 
-def report_kind(now, readings, active):
-    active_tuple = tuple(active)
-    condition_change = last_sent_conditions is None or active_tuple != last_sent_conditions
-    confirmation_due = (
-        bool(active_tuple) and not confirmation_delivered and
-        condition_started_at is not None and now - condition_started_at >= CONFIRM_SECONDS
-    )
-    calibration_due = CALIBRATION_MODE and now - last_sent_at >= CALIBRATION_LOG_SECONDS
-    if (last_sent_readings is None or condition_change or confirmation_due or
-            calibration_due or changed_enough(readings, last_sent_readings)):
-        return "event", confirmation_due
-    if now - last_sent_at >= CHECKIN_SECONDS:
-        return "checkin", False
-    return None, False
-
-
-while True:
-    loop_started = time.monotonic()
+def deliver_once():
+    readings = read_sensors()
+    active = conditions(readings)
+    ensure_network()
+    payload = {
+        "schema_version": "1.2",
+        "device_id": DEVICE_ID,
+        "source": "hardware",
+        "sensor_placement": SENSOR_PLACEMENT,
+        "recorded_at": iso_utc(),
+        # Every scheduled observation is retained for trends and memory. Alerts
+        # remain a separate server-side decision and do not notify when healthy.
+        "report_kind": "event",
+        "conditions": active,
+        "readings": readings,
+    }
+    response = None
     try:
-        readings = read_sensors()
-        active = conditions(readings)
-        active_tuple = tuple(active)
-        if active_tuple != observed_conditions:
-            observed_conditions = active_tuple
-            condition_started_at = loop_started
-            confirmation_delivered = False
+        response = http.post(
+            TELEMETRY_URL,
+            headers={"Authorization": "Bearer " + API_KEY},
+            json=payload,
+        )
+        if response.status_code < 200 or response.status_code >= 300:
+            raise RuntimeError("telemetry HTTP " + str(response.status_code))
+    finally:
+        if response is not None:
+            response.close()
+    print("Telemetry delivered:", payload["report_kind"], payload["recorded_at"],
+          "soil raw", readings["soil_raw"], "battery",
+          round(readings["battery_percent"], 1))
+    gc.collect()
 
-        kind, confirms_problem = report_kind(loop_started, readings, active)
-        if kind is not None:
-            ensure_network(loop_started)
-            payload = {
-                "schema_version": "1.2",
-                "device_id": DEVICE_ID,
-                "source": "hardware",
-                "sensor_placement": SENSOR_PLACEMENT,
-                "recorded_at": iso_utc(),
-                "report_kind": kind,
-                "conditions": active,
-                "readings": readings,
-            }
-            response = None
-            try:
-                response = http.post(
-                    TELEMETRY_URL,
-                    headers={"Authorization": "Bearer " + API_KEY},
-                    json=payload,
-                )
-                if response.status_code < 200 or response.status_code >= 300:
-                    raise RuntimeError("telemetry HTTP " + str(response.status_code))
-            finally:
-                if response is not None:
-                    response.close()
 
-            last_sent_readings = readings
-            last_sent_conditions = active_tuple
-            last_sent_at = loop_started
-            if confirms_problem:
-                confirmation_delivered = True
-            print("Telemetry delivered:", kind, payload["recorded_at"],
-                  "soil raw", readings["soil_raw"], "battery",
-                  round(readings["battery_percent"], 1))
-            gc.collect()
+def deep_sleep(seconds):
+    """Cut external rails and preserve their off state during deep sleep."""
+    try:
+        i2c.deinit()
+    except Exception:
+        pass
+    try:
+        wifi.radio.enabled = False
+    except Exception:
+        pass
+
+    preserved = []
+    for pin_name in ("I2C_POWER", "NEOPIXEL_POWER"):
+        pin = getattr(board, pin_name, None)
+        if pin is not None:
+            power = digitalio.DigitalInOut(pin)
+            power.switch_to_output(value=False)
+            preserved.append(power)
+
+    wake_alarm = alarm.time.TimeAlarm(
+        monotonic_time=time.monotonic() + seconds
+    )
+    print("Sleeping for", seconds, "seconds")
+    alarm.exit_and_deep_sleep_until_alarms(
+        wake_alarm, preserve_dios=tuple(preserved)
+    )
+
+
+if DEEP_SLEEP_ENABLED:
+    try:
+        deliver_once()
     except Exception as error:
         # Never print the URL, credentials, request headers, or response body.
         print("Telemetry cycle failed:", type(error).__name__, str(error)[:120])
-
-    elapsed = time.monotonic() - loop_started
-    time.sleep(max(1, SAMPLE_INTERVAL_SECONDS - elapsed))
+    finally:
+        deep_sleep(WAKE_INTERVAL_SECONDS)
+else:
+    while True:
+        try:
+            deliver_once()
+        except Exception as error:
+            print("Telemetry cycle failed:", type(error).__name__, str(error)[:120])
+        time.sleep(WAKE_INTERVAL_SECONDS)
