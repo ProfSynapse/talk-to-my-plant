@@ -10,3 +10,4 @@ venv/
 coverage.xml
 htmlcov/
 firmware/settings.toml
+.local/

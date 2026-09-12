@@ -4,8 +4,9 @@ An experimental IoT plant companion: sensor readings become useful alerts and
 natural-language conversations grounded in the plant's actual condition.
 
 The project is intentionally split at the telemetry boundary. The software can
-be built against simulated readings today, then use the real Adafruit hardware
-later without changing the backend, alerts, or chat integrations.
+be built against simulated readings and then use the real Adafruit hardware
+without changing the backend, alerts, or chat integrations. Telemetry schema
+`1.2` can retain a raw soil observation before an honest calibrated index exists.
 
 ## Hosted service
 
@@ -172,7 +173,7 @@ need to be purchased if already available.
 - [x] Add durable conversation memory and configurable OpenRouter replies
 - [x] Implement Slack commands, notifications, and installation manifest
 - [ ] Connect personal OpenRouter and Slack credentials
-- [ ] Write Feather CircuitPython firmware
+- [x] Write Feather CircuitPython telemetry firmware
 - [ ] Calibrate the real soil sensor
 - [ ] Add SMS and voice only if they improve the experience
 

@@ -76,7 +76,10 @@ class PlantService:
                     (*key, message.recorded_at, Jsonb(readings))).fetchone() is not None
             if advances and fresh:
                 previous = device["conditions"] if device else []
-                flags = conditions(readings, previous)
+                soil_alert_below, soil_recover_above = self.soil_thresholds(*key)
+                flags = conditions(readings, previous,
+                    soil_alert_below=soil_alert_below,
+                    soil_recover_above=soil_recover_above)
                 db.execute("""UPDATE devices SET last_seen=%s, observed_at=%s, latest=%s, conditions=%s
                               WHERE device_id=%s AND source=%s""",
                            (now, message.recorded_at, Jsonb(readings), Jsonb(flags), *key))
@@ -299,6 +302,29 @@ class PlantService:
             return None
         return json.loads(path.read_text())
 
+    @classmethod
+    def soil_thresholds(cls, device_id, source):
+        """Return calibrated hardware thresholds, or disable soil alerts safely."""
+        if source != "hardware":
+            return 25.0, 32.0
+        profile = cls.care_profile(device_id, source)
+        if not profile:
+            return None, None
+        for zone in profile.get("moisture_zones", []):
+            if zone.get("telemetry_field") != "soil_moisture":
+                continue
+            targets = zone.get("calibrated_sensor_targets")
+            if not isinstance(targets, dict):
+                return None, None
+            alert_below = targets.get("alert_below")
+            recover_above = targets.get("recover_above")
+            if (isinstance(alert_below, (int, float))
+                    and isinstance(recover_above, (int, float))
+                    and 0 <= alert_below < recover_above <= 100):
+                return float(alert_below), float(recover_above)
+            return None, None
+        return None, None
+
     def model_state(self, context, care_profile=None):
         now = utcnow()
         device = context["device"]
@@ -309,7 +335,7 @@ class PlantService:
                     "care_profile": care_profile}
         rows = [row for row in context["recent_readings"]
                 if now - row["recorded_at"] <= timedelta(hours=24)]
-        fields = ("soil_moisture", "temperature_f", "humidity", "pressure_hpa",
+        fields = ("soil_moisture", "soil_raw", "temperature_f", "humidity", "pressure_hpa",
                   "battery_percent", "battery_voltage")
         trends = {"sample_count": len(rows)}
         if rows:
@@ -318,9 +344,14 @@ class PlantService:
                 values = [row["payload"].get(field) for row in rows
                           if isinstance(row["payload"].get(field), (int, float))]
                 if values:
+                    newest_value = newest.get(field)
+                    oldest_value = oldest.get(field)
+                    if not isinstance(newest_value, (int, float)):
+                        newest_value = values[0]
+                    if not isinstance(oldest_value, (int, float)):
+                        oldest_value = values[-1]
                     trends[field] = {"min": round(min(values), 2), "max": round(max(values), 2),
-                                     "change": round(newest.get(field, values[0]) -
-                                                     oldest.get(field, values[-1]), 2)}
+                                     "change": round(newest_value - oldest_value, 2)}
         status = "offline" if device["stale"] else (
             "warning" if device["conditions"] or context["active_alerts"] else "ok")
         return {
@@ -347,8 +378,12 @@ class PlantService:
         if device["stale"]:
             return prefix + "My readings are stale. Please check my device's power and Wi-Fi."
         r = device["latest"]
+        if isinstance(r.get("soil_moisture"), (int, float)):
+            soil_text = f"soil index {r['soil_moisture']:.1f}/100"
+        else:
+            soil_text = f"uncalibrated soil raw {r.get('soil_raw', 'unavailable')}"
         flags = ", ".join(device["conditions"]) or "no threshold warnings"
-        return prefix + f"Last measured {device['observed_at'].isoformat()}: soil index {r['soil_moisture']:.1f}/100, {r['temperature_f']:.1f}°F, humidity {r['humidity']:.1f}%, battery {r['battery_percent']:.1f}%; {flags}."
+        return prefix + f"Last measured {device['observed_at'].isoformat()}: {soil_text}, {r['temperature_f']:.1f}°F, humidity {r['humidity']:.1f}%, battery {r['battery_percent']:.1f}%; {flags}."
 
     def check_offline(self, now=None):
         now = now or utcnow()

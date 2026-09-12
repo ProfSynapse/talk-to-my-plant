@@ -134,7 +134,14 @@ class ServiceTests(unittest.TestCase):
         profile = self.service.status("plant-001", "hardware")["care_profile"]
         self.assertEqual(len(profile["occupants"]), 5)
         self.assertEqual(profile["moisture_zones"][0]["id"], "foliage_substrate")
+        self.assertEqual(profile["moisture_zones"][0]["telemetry_field"], "soil_moisture")
         self.assertIsNone(profile["moisture_zones"][0]["calibrated_sensor_targets"])
+        self.assertEqual(self.service.soil_thresholds("plant-001", "hardware"),
+                         (None, None))
+        self.assertNotIn("needs_water", conditions(
+            {"soil_moisture": 5, "temperature_f": 72, "humidity": 60,
+             "battery_percent": 90}, soil_alert_below=None,
+            soil_recover_above=None))
         self.assertIn("too_cold", conditions({"soil_moisture":50, "temperature_f":60,
             "humidity":60, "battery_percent":90}))
         self.assertIn("air_too_dry", conditions({"soil_moisture":50, "temperature_f":72,
@@ -145,6 +152,22 @@ class ServiceTests(unittest.TestCase):
         request_body = json.loads(self.requests[-1].content)
         state = json.loads(request_body["messages"][1]["content"].split("\n", 1)[1])
         self.assertEqual(len(state["care_profile"]["occupants"]), 5)
+
+    def test_uncalibrated_hardware_logs_raw_soil_without_water_alert(self):
+        message = Telemetry(
+            schema_version="1.2", device_id=self.device_id, source="hardware",
+            recorded_at=self.now, report_kind="event",
+            readings={"soil_raw": 711, "temperature_f": 72, "humidity": 60,
+                      "pressure_hpa": 1013, "battery_percent": 90,
+                      "battery_voltage": 4.12})
+        result = self.service.ingest(message, now=self.now)
+        self.assertTrue(result["logged"])
+        snapshot = self.service.status(self.device_id, "hardware")
+        self.assertEqual(snapshot["device"]["latest"]["soil_raw"], 711)
+        self.assertIsNone(snapshot["device"]["latest"]["soil_moisture"])
+        self.assertNotIn("needs_water", snapshot["device"]["conditions"])
+        self.assertIn("uncalibrated soil raw 711",
+                      self.service.fallback(snapshot))
 
     def test_simulated_alerts_never_send_by_default(self):
         self.ingest(offset=-180,soil=10)

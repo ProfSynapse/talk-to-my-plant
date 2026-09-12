@@ -12,7 +12,7 @@
     "source"
   ],
   "properties": {
-    "schema_version": { "enum": ["1.0", "1.1"] },
+    "schema_version": { "enum": ["1.0", "1.1", "1.2"] },
     "report_kind": { "enum": ["event", "checkin"], "default": "event" },
     "device_id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
     "recorded_at": { "type": "string", "format": "date-time" },
@@ -27,15 +27,22 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "soil_moisture",
         "temperature_f",
         "humidity",
         "pressure_hpa",
         "battery_percent",
         "battery_voltage"
       ],
+      "anyOf": [
+        {
+          "required": ["soil_moisture"],
+          "properties": { "soil_moisture": { "type": "number" } }
+        },
+        { "required": ["soil_raw"] }
+      ],
       "properties": {
-        "soil_moisture": { "type": "number", "minimum": 0, "maximum": 100 },
+        "soil_moisture": { "type": ["number", "null"], "minimum": 0, "maximum": 100, "description": "Calibrated relative index; null until in-pot calibration exists" },
+        "soil_raw": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "Raw capacitive observation retained for calibration" },
         "temperature_f": { "type": "number", "minimum": -40, "maximum": 185 },
         "humidity": { "type": "number", "minimum": 0, "maximum": 100 },
         "pressure_hpa": { "type": "number", "minimum": 300, "maximum": 1100 },

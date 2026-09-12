@@ -1,9 +1,15 @@
 """Pure rules shared by ingestion and tests. Values require plant calibration."""
 
-def conditions(readings: dict, previous: list[str] = ()) -> list[str]:
+def conditions(readings: dict, previous: list[str] = (), *,
+               soil_alert_below: float | None = 25,
+               soil_recover_above: float | None = 32) -> list[str]:
     active = []
     # Separate recovery thresholds keep boundary noise from flapping alerts.
-    if readings["soil_moisture"] < (32 if "needs_water" in previous else 25):
+    soil = readings.get("soil_moisture")
+    soil_threshold = (soil_recover_above if "needs_water" in previous
+                      else soil_alert_below)
+    if (isinstance(soil, (int, float)) and soil_threshold is not None
+            and soil < soil_threshold):
         active.append("needs_water")
     if readings["temperature_f"] > (82 if "too_hot" in previous else 85):
         active.append("too_hot")

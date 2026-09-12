@@ -1,3 +1,6 @@
 adafruit_bme280
+adafruit_connection_manager
 adafruit_max1704x
+adafruit_ntp
+adafruit_requests
 adafruit_seesaw

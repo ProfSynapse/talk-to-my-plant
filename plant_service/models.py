@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class StrictModel(BaseModel):
@@ -8,16 +8,26 @@ class StrictModel(BaseModel):
 
 
 class Readings(StrictModel):
-    soil_moisture: float = Field(ge=0, le=100, description="Calibrated relative index, not volumetric water percent")
+    soil_moisture: float | None = Field(
+        default=None, ge=0, le=100,
+        description="Calibrated relative index, not volumetric water percent",
+    )
+    soil_raw: int | None = Field(default=None, ge=0, le=65535)
     temperature_f: float = Field(ge=-40, le=185)
     humidity: float = Field(ge=0, le=100)
     pressure_hpa: float = Field(ge=300, le=1100)
     battery_percent: float = Field(ge=0, le=100)
     battery_voltage: float = Field(ge=0, le=5)
 
+    @model_validator(mode="after")
+    def soil_observation(self):
+        if self.soil_moisture is None and self.soil_raw is None:
+            raise ValueError("soil_moisture or soil_raw is required")
+        return self
+
 
 class Telemetry(StrictModel):
-    schema_version: Literal["1.0", "1.1"] = "1.1"
+    schema_version: Literal["1.0", "1.1", "1.2"] = "1.2"
     device_id: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     source: Literal["simulator", "hardware"]
     recorded_at: datetime

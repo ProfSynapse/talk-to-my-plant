@@ -7,3 +7,7 @@ CIRCUITPY_WIFI_PASSWORD = "YOUR_WIFI_PASSWORD"
 PLANT_DEVICE_ID = "plant-001"
 PLANT_TELEMETRY_URL = "https://plant-api-production-68c9.up.railway.app/api/telemetry"
 PLANT_API_KEY = "YOUR_HARDWARE_SCOPED_DEVICE_TOKEN"
+
+# During initial in-pot calibration, store one raw soil observation every five
+# minutes. Change this to false after thresholds have been derived and deployed.
+PLANT_CALIBRATION_MODE = true

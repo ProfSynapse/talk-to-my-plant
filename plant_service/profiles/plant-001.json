@@ -82,6 +82,7 @@
       "occupant_ids": ["maranta_lemon_lime", "maranta_erythroneura", "fittonia", "ctenanthe_amagris"],
       "requirement": "Evenly moist and well drained, never continuously soggy.",
       "sensor_scope": "The single capacitive soil probe should be installed here. Its calibrated index describes this local zone only.",
+      "telemetry_field": "soil_moisture",
       "calibrated_sensor_targets": null
     },
     {
@@ -89,6 +90,7 @@
       "occupant_ids": ["phalaenopsis"],
       "requirement": "Open bark medium that drains freely and becomes nearly dry between thorough waterings.",
       "sensor_scope": "Not represented by the foliage-zone probe; assess orchid roots and bark separately unless a second calibrated probe is added.",
+      "telemetry_field": null,
       "calibrated_sensor_targets": null
     }
   ],
