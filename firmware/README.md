@@ -33,6 +33,15 @@ circup --path /Volumes/CIRCUITPY install \
 
 Then copy `code.py` to the root of `CIRCUITPY`.
 
+## Wi-Fi credentials
+
+Copy `settings.toml.example` to `CIRCUITPY/settings.toml` and replace the Wi-Fi
+placeholders locally. Never commit the populated file. To verify connectivity,
+temporarily copy `wifi_test.py` to `CIRCUITPY/code.py` and read the serial output.
+
+Writing files on `CIRCUITPY` triggers automatic reload, so do not configure Wi-Fi
+during an uninterrupted hardware soak test.
+
 ## Battery behavior
 
 The production requirement is deliberately simple: warn when an installed
