@@ -1,0 +1,3 @@
+adafruit_bme280
+adafruit_max1704x
+adafruit_seesaw
