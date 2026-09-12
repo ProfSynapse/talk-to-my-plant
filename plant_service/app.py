@@ -46,7 +46,10 @@ def create_app(service=None, *, settings=None, run_worker=True):
             memory_messages=int(cfg.get("MEMORY_MESSAGES", "20")),
             confirm_seconds=int(cfg.get("ALERT_CONFIRM_SECONDS", "120")),
             offline_seconds=int(cfg.get("OFFLINE_AFTER_SECONDS", "10800")),
-            openrouter_key=cfg.get("OPENROUTER_API_KEY", ""), model=cfg.get("OPENROUTER_MODEL", ""))
+            openrouter_key=cfg.get("OPENROUTER_API_KEY", ""),
+            primary_model=(cfg.get("OPENROUTER_PRIMARY_MODEL", "")
+                           or cfg.get("OPENROUTER_MODEL", "")),
+            fallback_model=cfg.get("OPENROUTER_FALLBACK_MODEL", ""))
         app.state.service.initialize()
         thread = None
         if run_worker:
@@ -154,8 +157,12 @@ def create_app(service=None, *, settings=None, run_worker=True):
         with app.state.service.pool.connection() as db:
             monitor = db.execute("SELECT last_success FROM worker_health WHERE name='monitor'").fetchone()
             backlog = db.execute("SELECT count(*) AS count FROM slack_jobs WHERE delivered_at IS NULL").fetchone()
+        primary_model = (cfg.get("OPENROUTER_PRIMARY_MODEL", "")
+                         or cfg.get("OPENROUTER_MODEL", ""))
         return {"openrouter_configured":bool(cfg.get("OPENROUTER_API_KEY")),
-            "model":cfg.get("OPENROUTER_MODEL") or "OpenRouter account default",
+            "model":primary_model or "OpenRouter account default",
+            "primary_model":primary_model or "OpenRouter account default",
+            "fallback_model":cfg.get("OPENROUTER_FALLBACK_MODEL") or None,
             "memory_messages":app.state.service.memory_messages,
             "slack_alerts_configured":bool(cfg.get("SLACK_WEBHOOK_URL")),
             "slack_commands_configured":all(cfg.get(k) for k in ("SLACK_SIGNING_SECRET","SLACK_TEAM_ID","SLACK_ALLOWED_USER_IDS")),

@@ -28,7 +28,10 @@ class ServiceTests(unittest.TestCase):
                 return httpx.Response(200, json={"model":"test-model", "choices":[{"message":{"content":"My remembered reply"}}]})
             return httpx.Response(200, text="ok")
         cls.service = PlantService(os.environ["TEST_DATABASE_URL"], memory_messages=3,
-                                  openrouter_key="test-key",http=httpx.Client(transport=httpx.MockTransport(mock)))
+                                  openrouter_key="test-key",
+                                  primary_model="primary-test-model",
+                                  fallback_model="fallback-test-model",
+                                  http=httpx.Client(transport=httpx.MockTransport(mock)))
         cls.service.initialize()
 
     @classmethod
@@ -87,7 +90,12 @@ class ServiceTests(unittest.TestCase):
         for i in range(4):
             msg = Chat(request_id=uuid.uuid4().hex,conversation_id=conversation,device_id=self.device_id,source="simulator",text=f"message-{i}")
             self.service.chat(msg)
-        sent = json.loads(self.requests[-1].content)["messages"]
+        request_body = json.loads(self.requests[-1].content)
+        self.assertEqual(
+            request_body["models"],
+            ["primary-test-model", "fallback-test-model"],
+        )
+        sent = request_body["messages"]
         memory = sent[2:-1]
         self.assertEqual(len(memory),3)
         self.assertEqual(memory[-1]["content"],"My remembered reply")

@@ -18,7 +18,9 @@ using [the connection guide](docs/SLACK.md) to enable model replies and delivery
 
 Postgres stores sensor logs, care events, alert state, and conversation memory.
 Each reply sees the last 20 messages by default plus recent sensor/care context.
-Change `MEMORY_MESSAGES` or `OPENROUTER_MODEL` in Railway to tune that behavior.
+Change `MEMORY_MESSAGES`, `OPENROUTER_PRIMARY_MODEL`, or
+`OPENROUTER_FALLBACK_MODEL` in Railway to tune that behavior. OpenRouter tries
+the two configured models in order and reports which one answered.
 This version makes one OpenRouter call per reply; it needs no agent loop or MCP.
 
 ## Start without hardware

@@ -25,14 +25,16 @@ class Conflict(Exception):
 
 class PlantService:
     def __init__(self, database_url, *, memory_messages=20, confirm_seconds=120,
-                 offline_seconds=10800, openrouter_key="", model="", http=None):
+                 offline_seconds=10800, openrouter_key="", primary_model="",
+                 fallback_model="", http=None):
         self.pool = ConnectionPool(database_url, min_size=1, max_size=10, open=True,
                                    kwargs={"row_factory": dict_row, "options": "-c statement_timeout=10000"})
         self.memory_messages = max(2, min(100, memory_messages))
         self.confirm_seconds = confirm_seconds
         self.offline_seconds = offline_seconds
         self.openrouter_key = openrouter_key
-        self.model = model
+        self.primary_model = primary_model
+        self.fallback_model = fallback_model
         self.http = http or httpx.Client(timeout=30, follow_redirects=False)
 
     def initialize(self):
@@ -142,8 +144,13 @@ class PlantService:
             reply = self.fallback(context)
             if self.openrouter_key:
                 body = {"messages": messages, "max_tokens": 600, "stream": False}
-                if self.model:
-                    body["model"] = self.model
+                configured_models = [
+                    model for model in (self.primary_model, self.fallback_model) if model
+                ]
+                if len(configured_models) > 1:
+                    body["models"] = configured_models
+                elif configured_models:
+                    body["model"] = configured_models[0]
                 try:
                     response = self.http.post("https://openrouter.ai/api/v1/chat/completions",
                         headers={"Authorization": "Bearer " + self.openrouter_key, "X-OpenRouter-Title": "Talk to My Plant"}, json=body)
@@ -153,7 +160,10 @@ class PlantService:
                     if not isinstance(content, str) or not content.strip():
                         raise ValueError("Empty model response")
                     reply = content[:8000]
-                    model = data.get("model", self.model or "openrouter-default")
+                    model = data.get(
+                        "model",
+                        configured_models[0] if configured_models else "openrouter-default",
+                    )
                 except (httpx.HTTPError, ValueError, KeyError, IndexError):
                     log.warning("OpenRouter reply unavailable; returning factual status")
                     reply = "My conversation service is temporarily unavailable. " + reply

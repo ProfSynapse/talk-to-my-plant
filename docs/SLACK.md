@@ -5,9 +5,13 @@ Configure secrets in the `plant-api` service's Railway Variables tab.
 
 ## OpenRouter
 
-Set `OPENROUTER_API_KEY` to a key for this project. Set `OPENROUTER_MODEL` to your
-chosen model ID, or leave it blank to use the OpenRouter account default. Change
-models by updating this variable; the next deployment uses that choice.
+Set `OPENROUTER_API_KEY` to a key for this project. Set
+`OPENROUTER_PRIMARY_MODEL` to the preferred OpenRouter model ID and
+`OPENROUTER_FALLBACK_MODEL` to the backup model ID. If the primary model is
+unavailable, rate-limited, or refuses the request, OpenRouter tries the fallback
+within the same API request. Leave the primary blank only if you intentionally
+want to use the OpenRouter account default. `OPENROUTER_MODEL` remains a
+temporary backward-compatible alias for the primary model.
 `MEMORY_MESSAGES=20` controls the recent conversation window. Postgres keeps the
 full history; changing the window does not delete records.
 
