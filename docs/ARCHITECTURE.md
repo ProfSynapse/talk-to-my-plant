@@ -15,7 +15,8 @@ bounded by turn and total token-budget caps) plus the last `MEMORY_RECENT_TURNS`
 turns verbatim (default 3, even if the conversation has been idle longer than a
 week). Full history remains in Postgres and is not deleted
 when prompt windows change. Memory is scoped to plant, source, and conversation
-ID. Slack slash-command memory is separated by workspace, channel, and user.
+ID. Slack slash-command memory is shared by workspace and channel so everyone
+in the dedicated plant channel speaks with the same remembered plant persona.
 
 Conversation memory is narrative and untrusted. It never determines current
 plant health. The server separately builds a compact authoritative state object:
@@ -84,7 +85,9 @@ starts only after a device first reports. No-data hardware is never called healt
 Owner APIs use `PLANT_API_KEY`. Hardware credentials can ingest only the configured
 hardware ID; simulator credentials only ingest the demo. Neither device token
 can read history or memory. Slack requests require HMAC signature verification,
-a recent timestamp, a configured workspace, and an allowlisted user.
+a recent timestamp, and the configured workspace. An optional channel allowlist
+keeps commands in the dedicated plant channel; an optional user allowlist can
+further restrict deployments that are not intended to be communal.
 
 Schema creation is idempotent under an advisory lock at startup. Database locks
 coordinate alert creation, chat turns, and durable jobs across restarts. Start
