@@ -35,6 +35,7 @@ class ServiceTests(unittest.TestCase):
                                   openrouter_key="test-key",
                                   primary_model="primary-test-model",
                                   fallback_model="fallback-test-model",
+                                  provider_order=("coreweave",),
                                   http=httpx.Client(transport=httpx.MockTransport(mock)))
         cls.service.initialize()
 
@@ -99,7 +100,11 @@ class ServiceTests(unittest.TestCase):
             request_body["models"],
             ["primary-test-model", "fallback-test-model"],
         )
-        self.assertEqual(request_body["provider"], {"require_parameters": True})
+        self.assertEqual(request_body["provider"], {
+            "require_parameters": True,
+            "order": ["coreweave"],
+            "allow_fallbacks": True,
+        })
         self.assertEqual(request_body["max_tokens"], 1200)
         self.assertLessEqual(
             self.service.estimate_tokens(request_body["messages"]) +

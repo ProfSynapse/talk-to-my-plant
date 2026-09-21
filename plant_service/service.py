@@ -28,7 +28,7 @@ class PlantService:
                  memory_compact_turns=200, memory_context_tokens=32000,
                  openrouter_max_output_tokens=1200, confirm_seconds=120,
                  offline_seconds=10800, openrouter_key="", primary_model="",
-                 fallback_model="", http=None):
+                 fallback_model="", provider_order=(), http=None):
         self.pool = ConnectionPool(database_url, min_size=1, max_size=10, open=True,
                                    kwargs={"row_factory": dict_row, "options": "-c statement_timeout=10000"})
         self.memory_recent_turns = max(1, min(20, memory_recent_turns))
@@ -43,6 +43,7 @@ class PlantService:
         self.openrouter_key = openrouter_key
         self.primary_model = primary_model
         self.fallback_model = fallback_model
+        self.provider_order = tuple(provider_order)
         self.http = http or httpx.Client(timeout=30, follow_redirects=False)
 
     def initialize(self):
@@ -253,7 +254,13 @@ class PlantService:
                 elif configured_models:
                     body["model"] = configured_models[0]
                 if configured_models:
-                    body["provider"] = {"require_parameters": True}
+                    provider = {"require_parameters": True}
+                    if self.provider_order:
+                        provider.update({
+                            "order": list(self.provider_order),
+                            "allow_fallbacks": True,
+                        })
+                    body["provider"] = provider
                 try:
                     response = self.http.post("https://openrouter.ai/api/v1/chat/completions",
                         headers={"Authorization": "Bearer " + self.openrouter_key, "X-OpenRouter-Title": "Talk to My Plant"}, json=body)

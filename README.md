@@ -24,9 +24,11 @@ Each reply sees the last three complete turns plus compact memories from the
 past seven days, selected within a 32,000-token total context ceiling. The model
 returns both a user-facing `response` and a terse
 `memory`; Postgres keeps both alongside the original user text. Change the
-`MEMORY_*` variables, `OPENROUTER_PRIMARY_MODEL`, or
-`OPENROUTER_FALLBACK_MODEL` in Railway to tune that behavior. OpenRouter tries
-the two configured models in order and reports which one answered.
+`MEMORY_*` variables, `OPENROUTER_PRIMARY_MODEL`,
+`OPENROUTER_FALLBACK_MODEL`, or `OPENROUTER_PROVIDER_ORDER` in Railway to tune
+that behavior. The provider order is comma-separated and remains a preference:
+OpenRouter can continue to other compatible providers when one fails. It then
+tries the two configured models in order and reports which one answered.
 This version makes one OpenRouter call per reply; it needs no agent loop or MCP.
 
 ## Start without hardware

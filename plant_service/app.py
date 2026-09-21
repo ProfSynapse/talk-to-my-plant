@@ -53,7 +53,12 @@ def create_app(service=None, *, settings=None, run_worker=True):
             openrouter_key=cfg.get("OPENROUTER_API_KEY", ""),
             primary_model=(cfg.get("OPENROUTER_PRIMARY_MODEL", "")
                            or cfg.get("OPENROUTER_MODEL", "")),
-            fallback_model=cfg.get("OPENROUTER_FALLBACK_MODEL", ""))
+            fallback_model=cfg.get("OPENROUTER_FALLBACK_MODEL", ""),
+            provider_order=tuple(
+                provider.strip()
+                for provider in cfg.get("OPENROUTER_PROVIDER_ORDER", "").split(",")
+                if provider.strip()
+            ))
         app.state.service.initialize()
         thread = None
         if run_worker:
@@ -167,6 +172,7 @@ def create_app(service=None, *, settings=None, run_worker=True):
             "model":primary_model or "OpenRouter account default",
             "primary_model":primary_model or "OpenRouter account default",
             "fallback_model":cfg.get("OPENROUTER_FALLBACK_MODEL") or None,
+            "provider_order":list(app.state.service.provider_order),
             "memory_recent_turns":app.state.service.memory_recent_turns,
             "memory_compact_days":app.state.service.memory_compact_days,
             "memory_compact_turns":app.state.service.memory_compact_turns,
