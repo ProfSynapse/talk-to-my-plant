@@ -198,6 +198,9 @@ def create_app(service=None, *, settings=None, run_worker=True):
         if not cfg.get("SLACK_TEAM_ID") or params.get("team_id") != cfg["SLACK_TEAM_ID"]:
             raise HTTPException(403, "Workspace not allowed")
         user_id = params.get("user_id", "")
+        user_name = params.get("user_name", "").strip() or None
+        if user_name and len(user_name) > 100:
+            raise HTTPException(400, "Slack username too long")
         allowed_users = {value.strip() for value in cfg.get("SLACK_ALLOWED_USER_IDS", "").split(",") if value.strip()}
         if not user_id or (allowed_users and "*" not in allowed_users and user_id not in allowed_users):
             raise HTTPException(403, "User not allowed")
@@ -220,9 +223,10 @@ def create_app(service=None, *, settings=None, run_worker=True):
         request_id = hashlib.sha256(timestamp.encode() + b":" + body).hexdigest()
         # Commit before acknowledging Slack; worker can resume after restart.
         with app.state.service.pool.connection() as db:
-            db.execute("""INSERT INTO slack_jobs(id,conversation_id,device_id,source,text,response_url)
-                          VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
-                       (request_id,conversation,device_id,source,text,response_url))
+            db.execute("""INSERT INTO slack_jobs(
+                            id,conversation_id,device_id,source,sender_id,sender_name,text,response_url)
+                          VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                       (request_id,conversation,device_id,source,user_id,user_name,text,response_url))
         return {"response_type":"in_channel", "text":"🌱 Checking my readings and memory…"}
 
     return app

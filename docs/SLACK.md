@@ -53,7 +53,11 @@ Try these commands after the app is installed:
 command logs a user-reported care event; the model doesn't pretend it measured
 that action. `/plant demo watered` works for testing without changing real care
 records. The question and reply are public in the allowed channel, and all
-members there share the same plant conversation memory. Alerts go to the
+members there share the same plant conversation memory. Each signed slash
+command's Slack user ID and username are saved with the turn, so the model can
+distinguish speakers and keep their facts, preferences, and care claims
+attributed to the right person. This uses metadata already included with slash
+commands and requires no additional Slack permission. Alerts go to the
 webhook's chosen channel and only fire for persistent problems or missing
 check-ins.
 

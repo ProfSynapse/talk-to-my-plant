@@ -197,7 +197,7 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(client.post("/api/telemetry",json=data,headers=headers).status_code,200)
             data["readings"]["soil_moisture"] = 101
             self.assertEqual(client.post("/api/telemetry",json=data,headers=headers).status_code,422)
-            body = urlencode({"team_id":"T1","user_id":"U1","channel_id":"C1","text":"demo how are you?",
+            body = urlencode({"team_id":"T1","user_id":"U1","user_name":"joe","channel_id":"C1","text":"demo how are you?",
                               "response_url":"https://hooks.slack.com/commands/test"}).encode()
             ts = str(int(time.time()))
             signature = "v0="+hmac.new(b"secret",b"v0:"+ts.encode()+b":"+body,hashlib.sha256).hexdigest()
@@ -207,10 +207,15 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(response.json()["response_type"],"in_channel")
             self.assertEqual(client.post("/slack/commands",content=body,headers=slack_headers).status_code,200)
             with self.service.pool.connection() as db:
-                row = db.execute("SELECT count(*) AS n, min(conversation_id) AS conversation_id FROM slack_jobs WHERE id=%s",(hashlib.sha256(ts.encode()+b":"+body).hexdigest(),)).fetchone()
+                row = db.execute("""SELECT count(*) AS n, min(conversation_id) AS conversation_id,
+                                  min(sender_id) AS sender_id,min(sender_name) AS sender_name
+                                  FROM slack_jobs WHERE id=%s""",
+                                 (hashlib.sha256(ts.encode()+b":"+body).hexdigest(),)).fetchone()
                 self.assertEqual(row["n"],1)
                 self.assertEqual(row["conversation_id"],"slack:T1:C1:simulator")
-            other_user_body = urlencode({"team_id":"T1","user_id":"U2","channel_id":"C1","text":"demo hello",
+                self.assertEqual(row["sender_id"],"U1")
+                self.assertEqual(row["sender_name"],"joe")
+            other_user_body = urlencode({"team_id":"T1","user_id":"U2","user_name":"maria","channel_id":"C1","text":"demo hello",
                                          "response_url":"https://hooks.slack.com/commands/test"}).encode()
             other_user_signature = "v0="+hmac.new(b"secret",b"v0:"+ts.encode()+b":"+other_user_body,hashlib.sha256).hexdigest()
             other_user_headers = {**slack_headers,"x-slack-signature":other_user_signature}
@@ -222,6 +227,15 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(client.post("/slack/commands",content=wrong_channel_body,headers=wrong_channel_headers).status_code,403)
             self.service.process_slack_job()
             self.assertEqual(json.loads(self.requests[-1].content)["response_type"],"in_channel")
+            openrouter = [request for request in self.requests if request.url.host == "openrouter.ai"][-1]
+            current = json.loads(openrouter.content)["messages"][-1]["content"]
+            if '\"id\":\"U1\"' in current:
+                self.assertIn('\"name\":\"joe\"', current)
+                self.assertTrue(current.endswith("MESSAGE:\nhow are you?"))
+            else:
+                self.assertIn('\"id\":\"U2\"', current)
+                self.assertIn('\"name\":\"maria\"', current)
+                self.assertTrue(current.endswith("MESSAGE:\nhello"))
             slack_headers["x-slack-signature"] = "bad"
             self.assertEqual(client.post("/slack/commands",content=body,headers=slack_headers).status_code,401)
 

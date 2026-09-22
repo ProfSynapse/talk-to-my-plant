@@ -52,6 +52,8 @@ class Chat(StrictModel):
     conversation_id: str = Field(min_length=1, max_length=200)
     device_id: str = Field(default="plant-001", pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     source: Literal["hardware", "simulator"] = "hardware"
+    sender_id: str | None = Field(default=None, min_length=1, max_length=100)
+    sender_name: str | None = Field(default=None, min_length=1, max_length=100)
     text: str = Field(min_length=1, max_length=4000)
 
 

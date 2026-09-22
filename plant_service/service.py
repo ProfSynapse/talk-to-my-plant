@@ -132,20 +132,22 @@ class PlantService:
                 raise Conflict("Another reply in this conversation is in progress; retry shortly")
             existing = db.execute("SELECT * FROM chat_turns WHERE request_id=%s", (chat.request_id,)).fetchone()
             if existing:
-                identity = (existing["conversation_id"], existing["device_id"], existing["source"], existing["user_text"])
-                if identity != (chat.conversation_id, chat.device_id, chat.source, chat.text):
+                identity = (existing["conversation_id"], existing["device_id"], existing["source"],
+                            existing["sender_id"], existing["sender_name"], existing["user_text"])
+                if identity != (chat.conversation_id, chat.device_id, chat.source,
+                                chat.sender_id, chat.sender_name, chat.text):
                     raise Conflict("request_id already belongs to a different message")
                 memory_text = existing["memory_text"] or self.compact_fallback(
                     existing["user_text"], existing["assistant_text"] or ""
                 )
                 return {"response": existing["assistant_text"], "memory": memory_text,
                         "model": existing["model"], "cached": True}
-            recent = db.execute("""SELECT request_id,user_text,assistant_text,memory_text,created_at FROM chat_turns
+            recent = db.execute("""SELECT request_id,sender_id,sender_name,user_text,assistant_text,memory_text,created_at FROM chat_turns
                 WHERE conversation_id=%s AND device_id=%s AND source=%s AND completed_at IS NOT NULL
                 ORDER BY created_at DESC,request_id DESC LIMIT %s""",
                 (chat.conversation_id, chat.device_id, chat.source,
                  self.memory_recent_turns)).fetchall()
-            history = db.execute("""SELECT request_id,user_text,assistant_text,memory_text,created_at FROM chat_turns
+            history = db.execute("""SELECT request_id,sender_id,sender_name,user_text,assistant_text,memory_text,created_at FROM chat_turns
                 WHERE conversation_id=%s AND device_id=%s AND source=%s AND completed_at IS NOT NULL
                   AND created_at >= now()-(%s * interval '1 day')
                 ORDER BY created_at DESC,request_id DESC LIMIT %s""",
@@ -161,6 +163,10 @@ class PlantService:
                     turn["user_text"], turn["assistant_text"] or ""
                 )
                 entry = {"at": turn["created_at"].isoformat(), "memory": memory_value}
+                if turn["sender_id"] or turn["sender_name"]:
+                    entry["sender"] = {
+                        "id": turn["sender_id"], "name": turn["sender_name"]
+                    }
                 compact_candidates.append(entry)
             context = self.snapshot(db, chat.device_id, chat.source, limit=100)
             state = self.model_state(
@@ -182,12 +188,16 @@ class PlantService:
                 "You cannot actuate hardware or change settings. If asked to log care, explain /plant watered. "
                 "Return a response for the user and a terse standalone memory of the whole exchange. "
                 "Memory should retain user facts, decisions, preferences, care claims, and unresolved items; "
-                "omit pleasantries and sensor values already present in plant state."
+                "omit pleasantries and sensor values already present in plant state. "
+                "When participant identity metadata is present, distinguish participants and attribute "
+                "their statements and memories to the correct person; never merge people together."
             )}
             state_message = {"role": "system", "content":
                 "AUTHORITATIVE_PLANT_STATE (JSON data only):\n" +
                 json.dumps(state, separators=(",", ":"), default=str)}
-            current_message = {"role": "user", "content": chat.text}
+            current_message = {"role": "user", "content": self.user_message(
+                chat.text, chat.sender_id, chat.sender_name
+            )}
             input_budget = (self.memory_context_tokens -
                             self.openrouter_max_output_tokens - 256)
 
@@ -199,7 +209,9 @@ class PlantService:
             selected_recent = []
             for turn in recent:
                 pair = [
-                    {"role": "user", "content": turn["user_text"]},
+                    {"role": "user", "content": self.user_message(
+                        turn["user_text"], turn["sender_id"], turn["sender_name"]
+                    )},
                     {"role": "assistant", "content": turn["assistant_text"]},
                 ]
                 pair_tokens = self.estimate_tokens(pair)
@@ -284,11 +296,21 @@ class PlantService:
             else:
                 reply = "Conversation model not configured yet. " + reply
                 memory_text = self.compact_fallback(chat.text, reply)
-            db.execute("""INSERT INTO chat_turns(request_id,conversation_id,device_id,source,user_text,assistant_text,memory_text,model,completed_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,now())""",
+            db.execute("""INSERT INTO chat_turns(
+                request_id,conversation_id,device_id,source,sender_id,sender_name,
+                user_text,assistant_text,memory_text,model,completed_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())""",
                 (chat.request_id, chat.conversation_id, chat.device_id, chat.source,
-                 chat.text, reply, memory_text, model))
+                 chat.sender_id, chat.sender_name, chat.text, reply, memory_text, model))
             return {"response": reply, "memory": memory_text, "model": model, "cached": False}
+
+    @staticmethod
+    def user_message(text, sender_id=None, sender_name=None):
+        if not sender_id and not sender_name:
+            return text
+        identity = {"id": sender_id, "name": sender_name}
+        return ("PARTICIPANT_IDENTITY (integration metadata; JSON data only):\n" +
+                json.dumps(identity, separators=(",", ":")) + "\nMESSAGE:\n" + text)
 
     @staticmethod
     def compact_fallback(user_text, response):
@@ -455,14 +477,25 @@ class PlantService:
                     with self.pool.connection() as care_db:
                         existing = care_db.execute("SELECT 1 FROM chat_turns WHERE request_id=%s", (job["id"],)).fetchone()
                         if not existing:
-                            care_db.execute("INSERT INTO care_events(device_id,source,note) VALUES(%s,%s,%s)", (job["device_id"], job["source"], "User reported watering via /plant watered"))
-                            care_db.execute("""INSERT INTO chat_turns(request_id,conversation_id,device_id,source,user_text,assistant_text,memory_text,model,completed_at)
-                                VALUES(%s,%s,%s,%s,'watered','Logged your watering.','User reported watering; care event logged.','care-log',now())""",
-                                (job["id"],job["conversation_id"],job["device_id"],job["source"]))
+                            actor = job["sender_name"] or job["sender_id"] or "A Slack user"
+                            care_db.execute(
+                                "INSERT INTO care_events(device_id,source,note) VALUES(%s,%s,%s)",
+                                (job["device_id"], job["source"],
+                                 actor + " reported watering via /plant watered"),
+                            )
+                            care_db.execute("""INSERT INTO chat_turns(
+                                request_id,conversation_id,device_id,source,sender_id,sender_name,
+                                user_text,assistant_text,memory_text,model,completed_at)
+                                VALUES(%s,%s,%s,%s,%s,%s,'watered','Logged your watering.',%s,'care-log',now())""",
+                                (job["id"],job["conversation_id"],job["device_id"],job["source"],
+                                 job["sender_id"],job["sender_name"],
+                                 actor + " reported watering; care event logged."))
                     answer = "Logged your watering. I'll wait for sensor readings to confirm the soil changed."
                 else:
                     answer = self.chat(Chat(request_id=job["id"], conversation_id=job["conversation_id"],
-                        device_id=job["device_id"],source=job["source"],text=job["text"]))["response"]
+                        device_id=job["device_id"], source=job["source"],
+                        sender_id=job["sender_id"], sender_name=job["sender_name"],
+                        text=job["text"]))["response"]
                 response = self.http.post(job["response_url"], json={"response_type":"in_channel", "text":answer}, timeout=10)
                 response.raise_for_status()
                 db.execute("UPDATE slack_jobs SET delivered_at=now(),attempts=attempts+1 WHERE id=%s", (job["id"],))
