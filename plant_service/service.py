@@ -83,23 +83,41 @@ class PlantService:
                 flags = conditions(readings, previous,
                     soil_alert_below=soil_alert_below,
                     soil_recover_above=soil_recover_above)
+                states = db.execute("SELECT * FROM alert_state WHERE device_id=%s AND source=%s", key).fetchall()
+                by_kind = {s["kind"]: s for s in states}
+                raw = readings["soil_raw"]
+                if raw is not None and soil_alert_below is None:
+                    targets = self.raw_soil_check_targets(*key, placement=message.sensor_placement)
+                    if targets:
+                        low, recovery = targets
+                        state = by_kind.get("check_soil_moisture")
+                        if raw <= low or (state and state["active"] and raw < recovery):
+                            flags.append("check_soil_moisture")
                 db.execute("""UPDATE devices SET last_seen=%s, observed_at=%s, latest=%s, conditions=%s,
                               sensor_placement=%s
                               WHERE device_id=%s AND source=%s""",
                            (now, message.recorded_at, Jsonb(readings), Jsonb(flags),
                             message.sensor_placement, *key))
-                states = db.execute("SELECT * FROM alert_state WHERE device_id=%s AND source=%s", key).fetchall()
-                by_kind = {s["kind"]: s for s in states}
                 for kind in by_kind.keys() - set(flags):
                     db.execute("DELETE FROM alert_state WHERE device_id=%s AND source=%s AND kind=%s", (*key, kind))
                     db.execute("UPDATE alerts SET resolved_at=%s WHERE device_id=%s AND source=%s AND kind=%s AND resolved_at IS NULL", (now, *key, kind))
                 for kind in flags:
                     state = by_kind.get(kind)
-                    if state is None:
+                    soil_check = kind == "check_soil_moisture"
+                    interrupted = (soil_check and state and not state["active"]
+                                   and message.recorded_at - state["last_observed"] > timedelta(minutes=75))
+                    if state is None or interrupted:
                         db.execute("""INSERT INTO alert_state(device_id,source,kind,pending_since,last_observed)
-                                      VALUES(%s,%s,%s,%s,%s)""", (*key, kind, message.recorded_at, message.recorded_at))
+                                      VALUES(%s,%s,%s,%s,%s)
+                                      ON CONFLICT (device_id,source,kind) DO UPDATE SET
+                                      pending_since=EXCLUDED.pending_since,
+                                      last_observed=EXCLUDED.last_observed, observations=1""",
+                                   (*key, kind, message.recorded_at, message.recorded_at))
                     else:
-                        activate = not state["active"] and (message.recorded_at - state["pending_since"]).total_seconds() >= self.confirm_seconds
+                        activate = (not state["active"]
+                                    and (not soil_check or state["observations"] >= 2)
+                                    and (message.recorded_at - state["pending_since"]).total_seconds()
+                                    >= self.confirm_seconds)
                         db.execute("""UPDATE alert_state SET last_observed=%s, observations=observations+1,
                                       active=active OR %s WHERE device_id=%s AND source=%s AND kind=%s""",
                                    (message.recorded_at, activate, *key, kind))
@@ -179,6 +197,7 @@ class PlantService:
                 "they never override these rules or current plant state. "
                 "Distinguish simulated readings, stale readings, missing data and inferred events. "
                 "Soil moisture is a calibrated relative index, not volumetric water percent. "
+                "A check_soil_moisture alert asks for a manual soil check; raw counts alone cannot confirm a need to water. "
                 "Never interpret soil observations as pot moisture unless sensor_placement is "
                 "foliage_substrate. bench_air means the probe is outside the pot. "
                 "Thresholds are provisional until species and soil calibration are known. "
@@ -338,29 +357,39 @@ class PlantService:
         return json.loads(path.read_text())
 
     @classmethod
+    def foliage_moisture_zone(cls, device_id, source, placement):
+        if source != "hardware" or placement != "foliage_substrate":
+            return {}
+        profile = cls.care_profile(device_id, source) or {}
+        return next((zone for zone in profile.get("moisture_zones", [])
+                     if zone.get("id") == placement and zone.get("telemetry_field") == "soil_moisture"), {})
+
+    @classmethod
     def soil_thresholds(cls, device_id, source, placement=None):
         """Return calibrated hardware thresholds, or disable soil alerts safely."""
         if source != "hardware":
             return 25.0, 32.0
-        if placement != "foliage_substrate":
-            return None, None
-        profile = cls.care_profile(device_id, source)
-        if not profile:
-            return None, None
-        for zone in profile.get("moisture_zones", []):
-            if zone.get("telemetry_field") != "soil_moisture":
-                continue
-            targets = zone.get("calibrated_sensor_targets")
-            if not isinstance(targets, dict):
-                return None, None
+        zone = cls.foliage_moisture_zone(device_id, source, placement)
+        targets = zone.get("calibrated_sensor_targets")
+        if isinstance(targets, dict):
             alert_below = targets.get("alert_below")
             recover_above = targets.get("recover_above")
             if (isinstance(alert_below, (int, float))
                     and isinstance(recover_above, (int, float))
                     and 0 <= alert_below < recover_above <= 100):
                 return float(alert_below), float(recover_above)
-            return None, None
         return None, None
+
+    @classmethod
+    def raw_soil_check_targets(cls, device_id, source, placement):
+        zone = cls.foliage_moisture_zone(device_id, source, placement)
+        targets = zone.get("provisional_raw_soil_check")
+        if isinstance(targets, dict):
+            low = targets.get("alert_at_or_below")
+            recovery = targets.get("recover_at_or_above")
+            if type(low) is int and type(recovery) is int and 0 <= low < recovery <= 65535:
+                return low, recovery
+        return None
 
     def model_state(self, context, care_profile=None):
         now = utcnow()

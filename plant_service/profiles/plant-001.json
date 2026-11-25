@@ -83,7 +83,12 @@
       "requirement": "Evenly moist and well drained, never continuously soggy.",
       "sensor_scope": "The single capacitive soil probe should be installed here. Its calibrated index describes this local zone only.",
       "telemetry_field": "soil_moisture",
-      "calibrated_sensor_targets": null
+      "calibrated_sensor_targets": null,
+      "provisional_raw_soil_check": {
+        "alert_at_or_below": 650,
+        "recover_at_or_above": 730,
+        "basis": "Recent raw counts at the installed probe position. Use only as a prompt to check the foliage soil by hand."
+      }
     },
     {
       "id": "orchid_bark",

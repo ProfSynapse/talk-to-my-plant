@@ -68,9 +68,11 @@ true, it also stores a raw soil observation every five minutes so the installed
 watering curve can be calibrated. Failed deliveries are retried on a later
 cycle, and Wi-Fi plus UTC/NTP synchronization recover automatically.
 
-Raw soil readings are accepted by telemetry schema `1.2`. The service logs them
-but suppresses `needs_water` until the foliage-zone care profile contains valid
-`alert_below` and `recover_above` calibration targets. After calibration, the
+Raw soil readings are accepted by telemetry schema `1.2`. The foliage-zone
+profile can use raw counts to prompt a manual soil check after three consecutive
+low readings. The service uses `needs_water` when the profile has valid
+`alert_below` and `recover_above` calibration targets and the device reports an
+index. After calibration, the
 firmware will map raw readings to the profile's relative 0–100 index and
 `PLANT_CALIBRATION_MODE` can be disabled.
 
