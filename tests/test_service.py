@@ -6,6 +6,7 @@ import time
 import unittest
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 from urllib.parse import urlencode
 
 import httpx
@@ -176,6 +177,58 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn("needs_water", snapshot["device"]["conditions"])
         self.assertIn("probe placement bench_air; raw capacitance 711",
                       self.service.fallback(snapshot))
+
+    def test_provisional_foliage_check_requires_three_consecutive_low_readings(self):
+        profile = self.service.care_profile("plant-001", "hardware")
+
+        def observe(minutes, raw, placement="foliage_substrate"):
+            recorded_at = self.now + timedelta(minutes=minutes)
+            return self.service.ingest(Telemetry(
+                device_id=self.device_id, source="hardware", sensor_placement=placement,
+                recorded_at=recorded_at,
+                readings={"soil_raw": raw, "temperature_f": 72, "humidity": 60,
+                          "pressure_hpa": 1013, "battery_percent": 90,
+                          "battery_voltage": 4.12},
+            ), now=recorded_at)
+
+        def active_checks():
+            snapshot = self.service.status(self.device_id, "hardware")
+            self.assertIsNone(snapshot["device"]["latest"]["soil_moisture"])
+            self.assertNotIn("needs_water", snapshot["device"]["conditions"])
+            return [a for a in snapshot["active_alerts"] if a["kind"] == "check_soil_moisture"]
+
+        with patch.object(PlantService, "care_profile", return_value=profile):
+            observe(-360, 640, "bench_air")
+            observe(-345, 640, "orchid_bark")
+            observe(-330, 640, "unknown")
+            self.assertNotIn("check_soil_moisture", self.service.status(
+                self.device_id, "hardware")["device"]["conditions"])
+
+            observe(-315, 650)
+            observe(-300, 651)
+            observe(-285, 650)
+            observe(-270, 649)
+            self.assertFalse(observe(-270, 649)["current_state_updated"])
+            self.assertFalse(observe(-271, 640)["current_state_updated"])
+            self.assertEqual(active_checks(), [])
+
+            observe(-180, 640)
+            observe(-165, 645)
+            self.assertEqual(active_checks(), [])
+            observe(-150, 650)
+            alert, = active_checks()
+            observe(-135, 729)
+            self.assertEqual(active_checks(), [alert])
+            observe(-120, 730)
+            self.assertEqual(active_checks(), [])
+
+            observe(-105, 640)
+            observe(-90, 645)
+            observe(-75, 650)
+            next_alert, = active_checks()
+            self.assertNotEqual(alert["id"], next_alert["id"])
+            observe(-60, 645, "bench_air")
+            self.assertEqual(active_checks(), [])
 
     def test_simulated_alerts_never_send_by_default(self):
         self.ingest(offset=-180,soil=10)

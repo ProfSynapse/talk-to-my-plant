@@ -27,6 +27,7 @@ def conditions(readings: dict, previous: list[str] = (), *,
 
 ALERT_TEXT = {
     "needs_water": "My soil has stayed below the dry threshold. Please check it before watering.",
+    "check_soil_moisture": "My foliage probe has stayed in its low reading range. Please feel the soil near the probe before deciding whether to water.",
     "too_hot": "It has stayed unusually warm here. Could you check my spot?",
     "too_cold": "It has stayed colder than this arrangement prefers. Could you check for a draft?",
     "air_too_dry": "The air has stayed below my humidity threshold. Could you check my surroundings?",
